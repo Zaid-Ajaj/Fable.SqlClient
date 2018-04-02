@@ -7,6 +7,12 @@ group Main
   nuget Fable.Core
   nuget Fable.PowerPack
   nuget Fable.Import.Node
+  nuget Fable.Import.Electron
+  nuget Fable.Elmish
+  nuget Fable.Elmish.React
+  nuget Fable.Elmish.Browser
+  nuget Fable.Elmish.Debugger
+  nuget Fable.Elmish.HMR
   
 group Build
   source https://api.nuget.org/v3/index.json

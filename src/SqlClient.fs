@@ -93,9 +93,11 @@ module SqlClient =
         | SqlTypes.DateTimeOffset n -> mssql.DateTimeOffset n
         | SqlTypes.Decimal (x, y) -> mssql.Decimal x y
         | SqlTypes.Variant -> mssql.Variant
+
     let input (name: string) (dataType: SqlTypes) (value: 'a) (req: ISqlRequest) =
         req.input name (convertSqlType dataType) value 
         req
+        
     let output (name: string) (dataType: SqlTypes) (req: ISqlRequest) =
         req.output name (convertSqlType dataType) 
         req
@@ -103,8 +105,9 @@ module SqlClient =
     /// Executes a statement and returns the number of the rows affected
     let executeNonQuery (sqlQuery)  (req: ISqlRequest) : Fable.Import.JS.Promise<Result<int, SqlError>> = 
         promise {
-            let! _ = query<obj> sqlQuery req 
-            return Ok req.rowsAffected
+            let! result = req.query sqlQuery
+            let rowsAffected = get<int[]> "rowsAffected" result
+            return Ok (rowsAffected.[0])
         } 
         |> Promise.catch (unbox<SqlError> >> Error)
 

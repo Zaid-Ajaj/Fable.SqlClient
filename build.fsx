@@ -94,4 +94,16 @@ Target "RunTests" <| fun _ ->
   ==> "RunTests"
 
 
+Target "BuildApp" <| fun _ ->
+    run dotnetCli "restore --no-cache" ("app" </> "Main")
+    run dotnetCli "restore --no-cache" ("app" </> "Renderer") 
+    run dotnetCli "fable npm-run build-app --port free" ("app" </> "Main")
+    run "npm" "run build-app" "."
+
+Target "StartApp" <| fun _ ->
+    run dotnetCli "restore" ("app" </> "Main")
+    run dotnetCli "restore" ("app" </> "Renderer") 
+    run dotnetCli "fable npm-run start --port free" ("app" </> "Main")
+    run "npm" "run start" "."    
+
 RunTargetOrDefault "RunTests"
