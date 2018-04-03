@@ -16,6 +16,7 @@ open Elmish.Debug
 open Fable.Helpers.React 
 open Fable.Helpers.React.Props 
 open System
+open Fable
 
 type AppState = {
     Database: string 
@@ -24,6 +25,7 @@ type AppState = {
     Password: string 
     Query: string
     Result: obj
+    IsTabular: bool
 }
 
 type Msg = 
@@ -32,6 +34,7 @@ type Msg =
   | SetUser of string 
   | SetPassword of string 
   | SetQuery of string
+  | SetTableResult of obj[]
   | SetResult of obj 
   | NoOp
   | ExecuteQuery  
@@ -44,6 +47,7 @@ let init () = {
     User = "sa"; 
     Password = "VeryStr0ng!Password"
     Query = ""
+    IsTabular = false
     Result = obj() }, Cmd.none 
 
 let update msg state = 
@@ -52,9 +56,11 @@ let update msg state =
     | SetPort port -> { state with Port = port }, Cmd.none
     | SetUser user -> { state with User = user }, Cmd.none 
     | SetPassword password -> { state with Password = password }, Cmd.none 
-    | SetResult result -> { state with Result = result }, Cmd.none
+    | SetResult result -> { state with IsTabular = false; Result = result }, Cmd.none
     | SetQuery query -> { state with Query = query }, Cmd.none
     | NoOp -> state, Cmd.none
+    | SetTableResult results -> { state with IsTabular = true
+                                             Result = results }, Cmd.none
     | ExecuteQuery ->
         let config = 
             [ SqlConfig.User state.User
@@ -68,9 +74,11 @@ let update msg state =
                 let! results = 
                     SqlClient.request pool 
                     |> SqlClient.query state.Query
-                return (unbox<obj> results)    
+                match results with
+                | Result.Ok rows -> return rows
+                | Result.Error _ -> return [| |]   
             } 
-        state, Cmd.ofPromise getResult () SetResult (fun e -> SetResult e)
+        state, Cmd.ofPromise getResult () SetTableResult (fun e -> SetResult e)
     | ExecuteScalar ->
         let config = 
             [ SqlConfig.User state.User
@@ -134,40 +142,56 @@ let configForm state dispatch =
                        DefaultValue state.Database
                        onChange (SetDatabase >> dispatch) ] ] ] 
 
+let JsonTable (rows: obj[]) = 
+    ofImport "default" 
+             "ts-react-json-table"
+             (createObj [ "rows" ==> rows; "className" ==> "table table-striped" ])
+             [ ] 
+
+
+let resultView state dispatch = 
+    match state.IsTabular with 
+    | false -> 
+        textarea [ Cols 70.0; 
+                   Rows 10.0; 
+                   ClassName "form-control"
+                   Value (sprintf "%A" state.Result) 
+                   DefaultValue (sprintf "%A" state.Result) ] [  ]
+    | true -> JsonTable (unbox<obj[]> state.Result)
+
+
 let main state dispatch = 
     div [ Style [ Padding 20 ] ]
-        [ div [ ClassName "row" ]
-              [ div [ ClassName "col-md-3" ] 
-                    [ div [ Style [ Margin 10 ]
+        [ div [ ]
+              [ div [ ClassName "row" ] 
+                    [ div [ Style [ Margin 5; ]
                             ClassName "btn btn-info"
                             OnClick (fun _ -> dispatch ExecuteQuery) ] 
                           [ str "Execute Query" ]
                       br [ ]
                       div [ ClassName "btn btn-info"
-                            Style [ Margin 10 ]
+                            Style [ Margin 5;  ]
                             OnClick (fun _ -> dispatch ExecuteScalar) ] 
                           [ str "Execute Scalar" ]
                       br [ ]
                       div [ ClassName "btn btn-info"
-                            Style [ Margin 10 ]
+                            Style [ Margin 5; ]
                             OnClick (fun _ -> dispatch ExecuteNonQuery) ] 
                           [ str "Execute Non Query" ] ]
-                div [ ClassName "col-md-7" ] 
-                    [ textarea [ Rows 3.0
-                                 Cols 70.0
-                                 ClassName "form-control"
-                                 Placeholder "Query"
-                                 DefaultValue state.Query
-                                 onChange (SetQuery >> dispatch) ] [ ] ] ]
-          hr [ ]
+                br [ ]
+                div [  ] 
+                    [ textarea [ 
+                       Rows 3.0
+                       Cols 70.0
+                       ClassName "form-control"
+                       Placeholder "Query"
+                       DefaultValue state.Query
+                       onChange (SetQuery >> dispatch) ] [ ] ] ]
           div [ ] 
-              [ textarea [ Cols 70.0; 
-                           Rows 10.0; 
-                           Value (sprintf "%A" state.Result) 
-                           DefaultValue (sprintf "%A" state.Result) ] [  ] ] 
+              [ h3 [ ] [ str "Results" ]
+                resultView state dispatch ] 
         ] 
    
-
 let view (state: AppState) dispatch = 
     div [ Style [ Padding 20 ] ] 
         [ h1 [ ] [ str "Fable.SqlClient" ]
