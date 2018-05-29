@@ -117,7 +117,14 @@ executeScalar<'t> : string -> ISqlRequest -> Promise<Result<'t, SqlError>>
 
 This repo contains an electron application with the UI written with Elmish and using the library to talk to my test databases: 
 
+### Query result set
 ![app](screenshots/app.png)
+
+### Scalar result
+![scalar](screenshots/scalar.png)
+
+### Error result
+![error](screenshots/error.png)
 
 ### Requirements
  - Dotnet 2.0
