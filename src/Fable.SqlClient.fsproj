@@ -1,14 +1,15 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
-    <Description>Fable Library</Description>
-    <PackageProjectUrl></PackageProjectUrl>
-    <RepositoryUrl></RepositoryUrl>
+    <Description>Fable binding for node-mssql, a Microsoft SQL server client library with an idiomatic F# API</Description>
+    <PackageProjectUrl>https://github.com/Zaid-Ajaj/Fable.SqlClient</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/Zaid-Ajaj/Fable.SqlClient</RepositoryUrl>
     <PackageLicenseUrl></PackageLicenseUrl>
     <PackageIconUrl></PackageIconUrl>
     <PackageTags>fsharp;fable</PackageTags>
-    <Authors></Authors>
-    <Version></Version>
+    <Authors>Zaid Ajaj</Authors>
+    <Version>0.1.0</Version>
     <TargetFramework>netstandard2.0</TargetFramework>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
   </PropertyGroup>
   <ItemGroup>
     <Compile Include="SqlConfig.fs" />

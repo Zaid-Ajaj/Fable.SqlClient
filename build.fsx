@@ -7,23 +7,19 @@ open Fake
 let libPath = "./src"
 let testsPath = "./test"
 
-let platformTool tool winTool =
-  let tool = if isUnix then tool else winTool
-  tool
-  |> ProcessHelper.tryFindFileOnPath
-  |> function Some t -> t | _ -> failwithf "%s not found" tool
-
-let nodeTool = platformTool "node" "node.exe"
-
 let mutable dotnetCli = "dotnet"
 
-let run cmd args workingDir =
-  let result =
-    ExecProcess (fun info ->
-      info.FileName <- cmd
-      info.WorkingDirectory <- workingDir
-      info.Arguments <- args) TimeSpan.MaxValue
-  if result <> 0 then failwithf "'%s %s' failed" cmd args
+let run fileName args workingDir =
+    printfn "CWD: %s" workingDir
+    let fileName, args =
+        if EnvironmentHelper.isUnix
+        then fileName, args else "cmd", ("/C " + fileName + " " + args)
+    let ok =
+        execProcess (fun info ->
+            info.FileName <- fileName
+            info.WorkingDirectory <- workingDir
+            info.Arguments <- args) TimeSpan.MaxValue
+    if not ok then failwith (sprintf "'%s> %s %s' task failed" workingDir fileName args)
 
 let delete file = 
     if File.Exists(file) 
@@ -31,12 +27,11 @@ let delete file =
     else () 
 
 let cleanBundles() = 
-    Path.Combine("public", "bundle.js") 
-        |> Path.GetFullPath 
-        |> delete
-    Path.Combine("public", "bundle.js.map") 
-        |> Path.GetFullPath
-        |> delete 
+    [ "main"; "rendere" ]
+    |> List.map (fun file -> file + ".js")
+    |> List.collect (fun file -> [ file; file + ".map" ])
+    |> List.map (fun file -> Path.GetFullPath(Path.Combine("dist", file)))
+    |> List.iter delete
 
 let cleanCacheDirs() = 
     [ testsPath </> "bin" 
@@ -51,7 +46,7 @@ Target "Clean" <| fun _ ->
 
 Target "InstallNpmPackages" (fun _ ->
   printfn "Node version:"
-  run nodeTool "--version" __SOURCE_DIRECTORY__
+  run "node" "--version" __SOURCE_DIRECTORY__
   run "npm" "--version" __SOURCE_DIRECTORY__
   run "npm" "install" __SOURCE_DIRECTORY__
 )
@@ -103,7 +98,24 @@ Target "BuildApp" <| fun _ ->
 Target "StartApp" <| fun _ ->
     run dotnetCli "restore" ("app" </> "Main")
     run dotnetCli "restore" ("app" </> "Renderer") 
-    run dotnetCli "fable npm-run start --port free" ("app" </> "Main")
-    run "npm" "run start" "."    
+    [ async { run dotnetCli "fable npm-run start" ("app" </> "Main") }
+      async { 
+          let stillCompiling = 
+            [ "main.js"; "renderer.js" ]
+            |> List.map (fun file -> "dist" </> file)
+            |> List.forall fileExists 
+            |> not
+
+          while stillCompiling do
+            do! Async.Sleep 500
+          
+          run "npm" "run launch" "." 
+      } ]
+    |> Async.Parallel
+    |> Async.RunSynchronously
+    |> ignore    
+
+"Clean" ==> "InstallNpmPackages" ==> "BuildApp" 
+"Clean" ==> "InstallNpmPackages" ==> "StartApp" 
 
 RunTargetOrDefault "RunTests"

@@ -7,7 +7,7 @@ open Electron
 open Node.Exports
 open Fable.PowerPack
 open Fable.SqlClient
-
+open Fable.Import.Browser
 open Elmish
 open Elmish.HMR
 open Elmish.React
@@ -17,6 +17,8 @@ open Fable.Helpers.React
 open Fable.Helpers.React.Props 
 open System
 open Fable
+open Elmish.ReactNative.Components
+open Fable
 
 type AppState = {
     Database: string 
@@ -24,7 +26,8 @@ type AppState = {
     User: string 
     Password: string 
     Query: string
-    Result: obj
+    Host: string
+    Result: Result<obj, obj>
     IsTabular: bool
 }
 
@@ -34,83 +37,90 @@ type Msg =
   | SetUser of string 
   | SetPassword of string 
   | SetQuery of string
-  | SetTableResult of obj[]
-  | SetResult of obj 
+  | SetHost of string
+  | SetResult of Result<obj, obj> 
   | NoOp
   | ExecuteQuery  
   | ExecuteScalar
   | ExecuteNonQuery
 
-let init () = { 
-    Database = "Tests"; 
-    Port = 1433; 
-    User = "sa"; 
-    Password = "VeryStr0ng!Password"
-    Query = ""
-    IsTabular = false
-    Result = obj() }, Cmd.none 
+let init () = 
+    match BrowserLocalStorage.load<AppState> "Model" with 
+    | Some model -> model, Cmd.none
+    | Option.None -> 
+        { 
+            Database = "Tests"; 
+            Port = 1433; 
+            User = "sa"; 
+            Host = "";
+            Password = "VeryStr0ng!Passwor1"
+            Query = ""
+            IsTabular = false
+            Result = Result.Ok (obj()) }, Cmd.none  
 
 let update msg state = 
     match msg with
     | SetDatabase db -> { state with Database = db }, Cmd.none 
     | SetPort port -> { state with Port = port }, Cmd.none
     | SetUser user -> { state with User = user }, Cmd.none 
+    | SetHost host -> { state with Host = host }, Cmd.none
     | SetPassword password -> { state with Password = password }, Cmd.none 
     | SetResult result -> { state with IsTabular = false; Result = result }, Cmd.none
     | SetQuery query -> { state with Query = query }, Cmd.none
     | NoOp -> state, Cmd.none
-    | SetTableResult results -> { state with IsTabular = true
-                                             Result = results }, Cmd.none
     | ExecuteQuery ->
         let config = 
             [ SqlConfig.User state.User
               SqlConfig.Password state.Password 
               SqlConfig.Database state.Database
               SqlConfig.Port state.Port
-              SqlConfig.Server "localhost" ]
+              SqlConfig.Server state.Host ]
+
         let getResult() = 
             promise {
                 let! pool = SqlClient.connect config 
                 let! results = 
                     SqlClient.request pool 
                     |> SqlClient.query state.Query
-                match results with
-                | Result.Ok rows -> return rows
-                | Result.Error _ -> return [| |]   
+                
+                return results
             } 
-        state, Cmd.ofPromise getResult () SetTableResult (fun e -> SetResult e)
+
+        state, Cmd.ofPromise getResult () (fun x -> SetResult (unbox x)) (fun e -> SetResult (Result.Error (unbox e)))
     | ExecuteScalar ->
         let config = 
             [ SqlConfig.User state.User
               SqlConfig.Password state.Password 
               SqlConfig.Database state.Database
               SqlConfig.Port state.Port
-              SqlConfig.Server "localhost" ]
+              SqlConfig.Server state.Host ]
         let getResult() = 
             promise {
                 let! pool = SqlClient.connect config 
                 let! results = 
                     SqlClient.request pool 
                     |> SqlClient.queryScalar state.Query
-                return (unbox<obj> results)    
+                return results   
             } 
-        state, Cmd.ofPromise getResult () SetResult (fun e -> SetResult e)        
+        state, Cmd.ofPromise getResult () (function 
+                                            | Result.Ok e -> SetResult (Result.Ok e)
+                                            | Result.Error err -> SetResult (Result.Error (unbox err))) (fun e -> SetResult (Result.Error (unbox e)))        
     | ExecuteNonQuery ->
         let config = 
             [ SqlConfig.User state.User
               SqlConfig.Password state.Password 
               SqlConfig.Database state.Database
               SqlConfig.Port state.Port
-              SqlConfig.Server "localhost" ]
+              SqlConfig.Server state.Host ]
         let getResult() = 
             promise {
                 let! pool = SqlClient.connect config 
                 let! results = 
                     SqlClient.request pool 
                     |> SqlClient.executeNonQuery state.Query
-                return (unbox<obj> results)    
+                return  results    
             } 
-        state, Cmd.ofPromise getResult () SetResult (fun e -> SetResult e)        
+        state, Cmd.ofPromise getResult () (fun res -> SetResult (unbox res)) (fun e -> SetResult (Result.Error (unbox e)))        
 
 let onChange (f: string -> unit) = 
     OnChange (fun e -> f (!!e.target?value))
@@ -118,6 +128,13 @@ let onChange (f: string -> unit) =
 let configForm state dispatch = 
   form [ ]
        [ div [ ClassName "form-group" ] 
+             [ label [ ] [ str "Host" ]
+               input [ ClassName "form-control"
+                       Placeholder "Host"; 
+                       DefaultValue state.Host
+                       onChange (SetHost >> dispatch)  ] ]
+           
+         div [ ClassName "form-group" ] 
              [ label [ ] [ str "Username" ]
                input [ ClassName "form-control"
                        Placeholder "Username"; 
@@ -142,23 +159,19 @@ let configForm state dispatch =
                        DefaultValue state.Database
                        onChange (SetDatabase >> dispatch) ] ] ] 
 
-let JsonTable (rows: obj[]) = 
-    ofImport "default" 
-             "ts-react-json-table"
-             (createObj [ "rows" ==> rows; "className" ==> "table table-striped" ])
-             [ ] 
+[<Emit("JSON.stringify(JSON.parse($0), null, 4)")>]
+let beautify (input: string) : string = jsNative
 
+[<Emit("JSON.stringify($0)")>]
+let toString (x: obj) : string = jsNative
 
 let resultView state dispatch = 
-    match state.IsTabular with 
-    | false -> 
-        textarea [ Cols 70.0; 
-                   Rows 10.0; 
-                   ClassName "form-control"
-                   Value (sprintf "%A" state.Result) 
-                   DefaultValue (sprintf "%A" state.Result) ] [  ]
-    | true -> JsonTable (unbox<obj[]> state.Result)
-
+ let color = match state.Result with  | Result.Ok _ -> "green" | Result.Error _ -> "crimson"
+ textarea [ Cols 70.0; 
+            Rows 10.0; 
+            Style [ Color color ]
+            ClassName "form-control"
+            Value (beautify (toJson state.Result)) ] [  ]
 
 let main state dispatch = 
     div [ Style [ Padding 20 ] ]
@@ -206,4 +219,5 @@ let view (state: AppState) dispatch =
 Program.mkProgram init update view 
 |> Program.withReact "root"
 |> Program.withConsoleTrace
+|> Program.withTrace (fun msg model -> BrowserLocalStorage.save "Model" model)
 |> Program.run

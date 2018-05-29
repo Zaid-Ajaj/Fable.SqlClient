@@ -1,10 +1,7 @@
 namespace Fable.SqlClient 
 
-open System
 open Fable.Core
-open Fable.Core.JsInterop
 open Fable.PowerPack 
-
 
 module SqlClient = 
 

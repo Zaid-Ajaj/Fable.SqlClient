@@ -32,6 +32,7 @@
     "loglevel": "^1.6.0",
     "qunitjs": "^2.4.1",
     "webpack": "3.10.0",
-    "webpack-dev-server": "^2.9.7"
+    "webpack-dev-server": "^2.9.7",
+    "webpackbar": "^2.6.1"
   }
 }
