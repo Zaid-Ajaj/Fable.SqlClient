@@ -3,7 +3,7 @@
     <Description>Fable binding for node-mssql, a Microsoft SQL server client library with an idiomatic F# API</Description>
     <PackageProjectUrl>https://github.com/Zaid-Ajaj/Fable.SqlClient</PackageProjectUrl>
     <RepositoryUrl>https://github.com/Zaid-Ajaj/Fable.SqlClient</RepositoryUrl>
-    <PackageLicenseUrl></PackageLicenseUrl>
+    <PackageLicenseUrl>https://github.com/Zaid-Ajaj/Fable.SqlClient/blob/master/LICENSE</PackageLicenseUrl>
     <PackageIconUrl></PackageIconUrl>
     <PackageTags>fsharp;fable</PackageTags>
     <Authors>Zaid Ajaj</Authors>
