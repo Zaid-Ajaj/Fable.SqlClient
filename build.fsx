@@ -6,7 +6,6 @@ open Fake
 
 let libPath = "./src"
 let testsPath = "./test"
-
 let mutable dotnetCli = "dotnet"
 
 let run fileName args workingDir =

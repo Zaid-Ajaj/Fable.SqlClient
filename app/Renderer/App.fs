@@ -212,7 +212,7 @@ let view (state: AppState) dispatch =
           div [ ClassName "row" ] 
               [ div [ ClassName "col-md-3" ] 
                     [ configForm state dispatch ] 
-                div [ ClassName "col-md-7" ] 
+                div [ ClassName "col-md-9" ] 
                     [ main state dispatch ] ] ]
 
 // App

@@ -1,4 +1,5 @@
-# Fable.SqlClient
+# Fable.SqlClient [![Nuget](https://img.shields.io/nuget/v/Fable.SqlClient.svg?colorB=green)](https://www.nuget.org/packages/Fable.SqlClient)
+
 
 [Fable](https://github.com/fable-compiler/Fable) binding for [node-mssql](https://github.com/tediousjs/node-mssql), Microsoft SQL Server client library with an idiomatic F# API to be used from Fable Node applications. 
 
@@ -112,6 +113,11 @@ The signatue of `SqlClient.executeScalar<'t>`
 ```fs
 executeScalar<'t> : string -> ISqlRequest -> Promise<Result<'t, SqlError>>
 ```
+# Bonus
+
+This repo contains an electron application with the UI written with Elmish and using the library to talk to my test databases: 
+
+![app](screenshots/app.png)
 
 ### Requirements
  - Dotnet 2.0
