@@ -28,6 +28,7 @@ let connectionConfig =
 When we execute queries, the result sets we get back from the native client is a simple object literal, so we can simply model a row of the result as a (pojo) record:
 
 ```fs
+[<Pojo>]
 type User = 
   { Id: int
     Name: string
@@ -132,12 +133,9 @@ This repo contains an electron application with the UI written with Elmish and u
  - Node
 
 
-Running the watching the tests live 
+### Development  
+To start building and testing the library using the Electron application, just run:
 ```sh
-./build.sh RunLiveTests 
+./build.sh StartApp 
 ```
-Building the tests and running QUnut cli runner
-```sh
-./build.sh RunTests
-```
-or just `Ctrl + Shift + B` to run the cli tests as a VS Code task
+it will start running the electron application as soon as everything is ready

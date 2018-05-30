@@ -26,7 +26,7 @@ let delete file =
     else () 
 
 let cleanBundles() = 
-    [ "main"; "rendere" ]
+    [ "main"; "renderer" ]
     |> List.map (fun file -> file + ".js")
     |> List.collect (fun file -> [ file; file + ".map" ])
     |> List.map (fun file -> Path.GetFullPath(Path.Combine("dist", file)))
@@ -99,14 +99,19 @@ Target "StartApp" <| fun _ ->
     run dotnetCli "restore" ("app" </> "Renderer") 
     [ async { run dotnetCli "fable npm-run start" ("app" </> "Main") }
       async { 
-          let stillCompiling = 
+          // sleep for 10 seconds to let fable does it's thing
+          do! Async.Sleep (10 * 1000)
+          
+          // a function that long-polls whether Fable finished working or not
+          let stillCompiling() = 
             [ "main.js"; "renderer.js" ]
-            |> List.map (fun file -> "dist" </> file)
+            |> List.map (fun file -> Path.GetFullPath(Path.Combine("dist", file)))
             |> List.forall fileExists 
             |> not
 
-          while stillCompiling do
-            do! Async.Sleep 500
+          while stillCompiling() do
+            printfn "Still compiling..."
+            do! Async.Sleep 3000
           
           run "npm" "run launch" "." 
       } ]
