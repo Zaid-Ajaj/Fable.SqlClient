@@ -9,25 +9,15 @@ module SqlClient =
     let private mssql: IMSSql = jsNative
     [<Emit("$1[$0]")>]
     let private get<'a> (prop: string) (literal: obj) : 'a = jsNative
-    let mutable private globalConnectionPool : Option<ISqlConnectionPool> = None 
-    let connect (config: SqlConfig list) : Fable.Import.JS.Promise<ISqlConnectionPool> =
-        let connectionConfig = SqlConfig.create config 
-        match globalConnectionPool with 
-        | Some connectionPool -> Promise.lift connectionPool 
-        | None -> promise {
-            let! pool = mssql.connect connectionConfig
-            globalConnectionPool <- Some pool
-            return pool
-        }
 
-    /// Closes any open connection that is maintained by the global connection pool
-    let close() = 
-        match globalConnectionPool with 
-        | Some pool -> 
-            pool.close() 
-            globalConnectionPool <- None 
-        | None -> 
-            () 
+    /// Creates and connects to a new connection pool
+    let connect (config: SqlConfig list) : Fable.Import.JS.Promise<ISqlConnectionPool> =
+        promise { 
+            let connectionConfig = SqlConfig.create config
+            let connection = ConnectionPool.create connectionConfig
+            do! connection.connect()
+            return connection
+        }
 
     /// Creates a request from the given connection pool.
     let request (pool: ISqlConnectionPool) : ISqlRequest = 
@@ -49,6 +39,7 @@ module SqlClient =
                 let sqlError = {
                     name = SqlErrorType.RequestError
                     code = ""
+                    stack = ""
                     message = "Result set was empty"
                 }
 

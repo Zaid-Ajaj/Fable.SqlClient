@@ -3,7 +3,6 @@ module Renderer
 open Fable.Core
 open Fable.Core.JsInterop
 open Fable.Import
-open Electron
 open Node.Exports
 open Fable.PowerPack
 open Fable.SqlClient
@@ -20,6 +19,8 @@ open Fable
 open Elmish.ReactNative.Components
 open Fable
 
+type Tab = Query | ParameterizedQuery | StoredProcedure
+
 type AppState = {
     Database: string 
     Port: int 
@@ -29,6 +30,7 @@ type AppState = {
     Host: string
     Result: Result<obj, obj>
     IsTabular: bool
+    CurrentTab : Tab
 }
 
 type Msg = 
@@ -38,20 +40,27 @@ type Msg =
   | SetPassword of string 
   | SetQuery of string
   | SetHost of string
+  | SetTab of Tab
   | SetResult of Result<obj, obj> 
   | NoOp
   | ExecuteQuery  
   | ExecuteScalar
   | ExecuteNonQuery
 
+[<PassGenerics>]
+let tryLoad<'t> name = 
+    try BrowserLocalStorage.load<'t> name 
+    with | _ -> FSharp.Core.None
+
 let init () = 
-    match BrowserLocalStorage.load<AppState> "Model" with 
+    match tryLoad<AppState> "Model" with 
     | Some model -> model, Cmd.none
     | Option.None -> 
         { 
             Database = "Tests"; 
             Port = 1433; 
             User = "sa"; 
+            CurrentTab = Query
             Host = "";
             Password = "VeryStr0ng!Passwor1"
             Query = ""
@@ -68,6 +77,7 @@ let update msg state =
     | SetResult result -> { state with IsTabular = false; Result = result }, Cmd.none
     | SetQuery query -> { state with Query = query }, Cmd.none
     | NoOp -> state, Cmd.none
+    | SetTab tab -> { state with CurrentTab = tab }, Cmd.none
     | ExecuteQuery ->
         let config = 
             [ SqlConfig.User state.User
@@ -173,37 +183,73 @@ let resultView state dispatch =
             ClassName "form-control"
             Value (beautify (toJson state.Result)) ] [  ]
 
+
+
+let tab state dispatch tab name = 
+    let isActive = state.CurrentTab = tab
+    let className = if isActive then "nav-link active" else "nav-link"
+    a [ ClassName className;
+        OnClick (fun _ -> dispatch (SetTab tab)) 
+        Style [ Cursor "pointer" ] ] 
+      [ str name ]
+    
+let tabs state dispatch = 
+    ul [ ClassName "nav nav-tabs" ] 
+       [ li [ ClassName "nav-item" ] 
+            [ tab state dispatch Query "Query" ]
+         li [ ClassName "nav-item" ] 
+            [ tab state dispatch ParameterizedQuery "Parameterized Query" ]
+         li [ ClassName "nav-item" ] 
+            [ tab state dispatch StoredProcedure "Stored Procedure" ] ]
+
+
+let queryButtons state dispatch = 
+    div [ ClassName "row"
+          Style [PaddingLeft 10] ] 
+          [ div [ Style [ Margin 5; ]
+                  ClassName "btn btn-info"
+                  OnClick (fun _ -> dispatch ExecuteQuery) ] 
+                [ str "Execute Query" ]
+            br [ ]
+            div [ ClassName "btn btn-info"
+                  Style [ Margin 5;  ]
+                  OnClick (fun _ -> dispatch ExecuteScalar) ] 
+                [ str "Execute Scalar" ]
+            br [ ]
+            div [ ClassName "btn btn-info"
+                  Style [ Margin 5; ]
+                  OnClick (fun _ -> dispatch ExecuteNonQuery) ] 
+                [ str "Execute Non Query" ] ]
+
+let query state dispatch = 
+  div 
+    [ ]
+    [ queryButtons state dispatch         
+      br [ ]
+      textarea [ 
+        Rows 3.0
+        Cols 70.0
+        ClassName "form-control"
+        Placeholder "Query"
+        DefaultValue state.Query
+        onChange (SetQuery >> dispatch) ] [ ] 
+      br [ ]
+      h3 [ ] [ str "Results" ]
+      br [ ]
+      resultView state dispatch ] 
+
 let main state dispatch = 
+    let view = 
+        match state.CurrentTab with
+        | Query -> query state dispatch 
+        | ParameterizedQuery -> h3 [ ] [ str "Parameterized query" ]
+        | StoredProcedure -> h3 [ ] [ str "Stored Procedure" ]
+
     div [ Style [ Padding 20 ] ]
         [ div [ ]
-              [ div [ ClassName "row" ] 
-                    [ div [ Style [ Margin 5; ]
-                            ClassName "btn btn-info"
-                            OnClick (fun _ -> dispatch ExecuteQuery) ] 
-                          [ str "Execute Query" ]
-                      br [ ]
-                      div [ ClassName "btn btn-info"
-                            Style [ Margin 5;  ]
-                            OnClick (fun _ -> dispatch ExecuteScalar) ] 
-                          [ str "Execute Scalar" ]
-                      br [ ]
-                      div [ ClassName "btn btn-info"
-                            Style [ Margin 5; ]
-                            OnClick (fun _ -> dispatch ExecuteNonQuery) ] 
-                          [ str "Execute Non Query" ] ]
+              [ tabs state dispatch
                 br [ ]
-                div [  ] 
-                    [ textarea [ 
-                       Rows 3.0
-                       Cols 70.0
-                       ClassName "form-control"
-                       Placeholder "Query"
-                       DefaultValue state.Query
-                       onChange (SetQuery >> dispatch) ] [ ] ] ]
-          div [ ] 
-              [ h3 [ ] [ str "Results" ]
-                resultView state dispatch ] 
-        ] 
+                view ] ]
    
 let view (state: AppState) dispatch = 
     div [ Style [ Padding 20 ] ] 

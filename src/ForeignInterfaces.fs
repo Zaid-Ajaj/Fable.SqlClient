@@ -1,6 +1,7 @@
 namespace Fable.SqlClient
 
 open Fable.Core
+open Fable.Core.JsInterop
 open Fable
 
 [<Erase>]
@@ -19,6 +20,7 @@ type ISqlRequest =
 type ISqlConnectionPool = 
     abstract request : unit -> ISqlRequest
     abstract close : unit -> unit
+    abstract connect : unit -> Fable.Import.JS.Promise<unit>
 
 type IMSSql = 
     abstract connect : SqlConfig -> Fable.Import.JS.Promise<ISqlConnectionPool>
@@ -51,6 +53,8 @@ type IMSSql =
     abstract VarBinary : int -> ISqlType 
     abstract MAX : int with get
 
+module ConnectionPool = 
+    let create (config: SqlConfig) : ISqlConnectionPool = import "createConnectionPool" "./createPool.js"
 
 [<StringEnumAttribute>]
 type SqlErrorType =
@@ -64,4 +68,6 @@ type SqlError = {
     name : SqlErrorType
     code : string
     message : string 
+    stack : string
 }
+

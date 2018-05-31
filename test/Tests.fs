@@ -103,8 +103,3 @@ testCasePromise "SqlClient.executeNonQuery with input" <| fun test ->
         | Ok 0 -> test.pass() 
         | otherwise -> test.unexpected otherwise 
     }
-
-Fable.Import.JS.setTimeout (fun _ -> 
-    SqlClient.close()
-    proc.exit(0)) 10000
-|> ignore

@@ -1,7 +1,6 @@
 var path = require("path");
 var webpack = require("webpack");
 var fableUtils = require("fable-utils");
-var webpackbar = require('webpackbar')
 
 function resolve(filePath) {
   return path.join(__dirname, filePath)
@@ -45,8 +44,7 @@ var basicConfig = {
         },
       }
     ]
-  },
-  plugins: [ new webpackbar() ]
+  }
 };
 
 var mainConfig = Object.assign({
