@@ -18,8 +18,18 @@ open System
 open Fable
 open Elmish.ReactNative.Components
 open Fable
+open Fable
 
 type Tab = Query | ParameterizedQuery | StoredProcedure
+
+type ParamDirection = Input | Output
+
+type QueryParam = {
+    Id : int
+    Type: ParamDirection
+    SqlType : SqlTypes
+    Name : string
+}
 
 type AppState = {
     Database: string 
@@ -30,7 +40,9 @@ type AppState = {
     Host: string
     Result: Result<obj, obj>
     IsTabular: bool
+    AvailableDatabases : string list option 
     CurrentTab : Tab
+    QueryParameters : QueryParam list
 }
 
 type Msg = 
@@ -46,6 +58,8 @@ type Msg =
   | ExecuteQuery  
   | ExecuteScalar
   | ExecuteNonQuery
+  | RefreshDatabases 
+  | SetDatabases of string list option
 
 [<PassGenerics>]
 let tryLoad<'t> name = 
@@ -56,16 +70,20 @@ let init () =
     match tryLoad<AppState> "Model" with 
     | Some model -> model, Cmd.none
     | Option.None -> 
-        { 
-            Database = "Tests"; 
-            Port = 1433; 
-            User = "sa"; 
-            CurrentTab = Query
-            Host = "";
-            Password = "VeryStr0ng!Passwor1"
-            Query = ""
-            IsTabular = false
-            Result = Result.Ok (obj()) }, Cmd.none  
+        { Database = ""; 
+          Port = 0; 
+          QueryParameters = []
+          User = ""; 
+          CurrentTab = Query
+          Host = "";
+          Password = ""
+          Query = ""
+          AvailableDatabases = None
+          IsTabular = false
+          Result = Result.Ok (obj()) }, Cmd.none  
+
+module QueryResult = 
+    type DbNames = { name: string }
 
 let update msg state = 
     match msg with
@@ -115,6 +133,39 @@ let update msg state =
         state, Cmd.ofPromise getResult () (function 
                                             | Result.Ok e -> SetResult (Result.Ok e)
                                             | Result.Error err -> SetResult (Result.Error (unbox err))) (fun e -> SetResult (Result.Error (unbox e)))        
+    | RefreshDatabases ->
+        let config = 
+            [ SqlConfig.User state.User
+              SqlConfig.Password state.Password 
+              SqlConfig.Port state.Port
+              SqlConfig.Server state.Host
+              SqlConfig.Database "" ]   
+
+        let getDatabases() = 
+            promise {
+                let! pool = SqlClient.connect config 
+                let query = "SELECT name FROM master.sys.databases WHERE name NOT IN ('master', 'tempdb', 'model', 'msdb')"
+                let request = SqlClient.request pool
+                let! results = SqlClient.query<QueryResult.DbNames> query request 
+                match results with 
+                | Result.Ok values -> 
+                    let availableDatabases =
+                        values 
+                        |> Array.map (fun r -> r.name)
+                        |> List.ofArray
+                        |> Some 
+
+                    printfn "%A" availableDatabases
+                    return availableDatabases
+                | Result.Error err -> return None  
+            }
+
+        state, Cmd.ofPromise 
+                  getDatabases () 
+                  SetDatabases
+                  (unbox >> Result.Error >> SetResult)        
+    
+    | SetDatabases xs -> { state with AvailableDatabases = xs }, Cmd.none
     | ExecuteNonQuery ->
         let config = 
             [ SqlConfig.User state.User
@@ -150,24 +201,37 @@ let configForm state dispatch =
                        Placeholder "Username"; 
                        DefaultValue state.User
                        onChange (SetUser >> dispatch)  ] ]
+         
          div [ ClassName "form-group" ] 
              [ label [ ] [ str "Password" ]
                input [ ClassName "form-control"
                        Placeholder "Password"; 
                        DefaultValue state.Password
                        onChange (SetPassword >> dispatch) ] ]
+         
          div [ ClassName "form-group" ] 
              [ label [ ] [ str "Port" ]
                input [ ClassName "form-control"
                        Placeholder "Port"; 
                        DefaultValue (string state.Port)
                        onChange (int >> SetPort >> dispatch) ] ]
+         
          div [ ClassName "form-group" ] 
-             [ label [ ] [ str "Database" ]
-               input [ ClassName "form-control"
-                       Placeholder "Database"; 
-                       DefaultValue state.Database
-                       onChange (SetDatabase >> dispatch) ] ] ] 
+             [ div [ ClassName "btn btn-success"
+                     OnClick (fun _ -> dispatch RefreshDatabases) ] 
+                   [ str "Refresh Databases" ] ]
+         
+         div [ ClassName "form-group" ] 
+             [ label [ ] [ str "Selected database" ]
+               select [ ClassName "form-control"
+                        Placeholder "Database"; 
+                        DefaultValue state.Database
+                        onChange (SetDatabase >> dispatch) ] 
+                      [ match state.AvailableDatabases with 
+                        | None -> () 
+                        | Some values -> 
+                            for value in values do 
+                                yield option [ ] [ str value ] ] ] ] 
 
 [<Emit("JSON.stringify(JSON.parse($0), null, 4)")>]
 let beautify (input: string) : string = jsNative
@@ -181,9 +245,8 @@ let resultView state dispatch =
             Rows 10.0; 
             Style [ Color color ]
             ClassName "form-control"
+            ReadOnly true
             Value (beautify (toJson state.Result)) ] [  ]
-
-
 
 let tab state dispatch tab name = 
     let isActive = state.CurrentTab = tab
@@ -201,7 +264,6 @@ let tabs state dispatch =
             [ tab state dispatch ParameterizedQuery "Parameterized Query" ]
          li [ ClassName "nav-item" ] 
             [ tab state dispatch StoredProcedure "Stored Procedure" ] ]
-
 
 let queryButtons state dispatch = 
     div [ ClassName "row"
