@@ -3,11 +3,16 @@
     <TargetFramework>netstandard2.0</TargetFramework>
   </PropertyGroup>
   <ItemGroup>
-    <Compile Include="QUnit.fs" />
-    <Compile Include="Tests.fs" />
+    <Compile Include="Mocha.fs" />
+    <Compile Include="App.fs" />
   </ItemGroup>
+
   <ItemGroup>
     <ProjectReference Include="..\src\Fable.SqlClient.fsproj" />
   </ItemGroup>
-  <Import Project="..\.paket\Paket.Restore.targets" />
+  
+  <ItemGroup>
+    <PackageReference Include="Fable.Core" Version="3.0.0" />
+  </ItemGroup>
+
 </Project>

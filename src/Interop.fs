@@ -5,10 +5,10 @@ open Fable.Core.JsInterop
 open Fable
 
 [<Erase>]
-type ISqlType = ISqlType 
+type private ISqlType = ISqlType 
 
-type ISqlRequest = 
-    abstract query<'a> : string -> Fable.Import.JS.Promise<'a []>
+type private ISqlRequest = 
+    abstract query : string -> (SqlError -> obj -> unit) -> unit
     abstract rowsAffected : int 
     abstract multiple : bool with get, set
     abstract stream : bool with set, get
@@ -17,13 +17,13 @@ type ISqlRequest =
     abstract on : string -> (obj -> unit) -> unit
 
 [<AllowNullLiteral>]
-type ISqlConnectionPool = 
+type private ISqlConnectionPool = 
     abstract request : unit -> ISqlRequest
     abstract close : unit -> unit
-    abstract connect : unit -> Fable.Import.JS.Promise<unit>
+    abstract connect : (exn -> unit) -> unit
 
-type IMSSql = 
-    abstract connect : SqlConfig -> Fable.Import.JS.Promise<ISqlConnectionPool>
+type private IMSSql = 
+    abstract connect : SqlConfig -> Fable.Core.JS.Promise<ISqlConnectionPool>
     abstract Bit : ISqlType with get 
     abstract BigInt : ISqlType with get 
     abstract Decimal : int -> int -> ISqlType
@@ -52,22 +52,4 @@ type IMSSql =
     abstract Binary : ISqlType with get
     abstract VarBinary : int -> ISqlType 
     abstract MAX : int with get
-
-module ConnectionPool = 
-    let create (config: SqlConfig) : ISqlConnectionPool = import "createConnectionPool" "./createPool.js"
-
-[<StringEnumAttribute>]
-type SqlErrorType =
-    | [<CompiledName("ConnectionError")>] ConnectionError
-    | [<CompiledName("TransactionError")>]  TransactionError
-    | [<CompiledName("RequestError")>] RequestError
-    | [<CompiledName("PreparedStatementError")>] PreparedStatementError
-
-[<Pojo>]
-type SqlError = {
-    name : SqlErrorType
-    code : string
-    message : string 
-    stack : string
-}
 

@@ -1,38 +1,17 @@
 {
   "private": true,
   "scripts": {
-    "build": "rollup -c rollup.config.js",
-    "test": "node ./node_modules/qunitjs/bin/qunit dist/fable-sqlclient-test.js",
-    "start": "webpack -w --config webpack.config.js",
-    "build-app": "webpack -p --config webpack.config.js",
-    "launch": "electron ./dist/main.js"
+    "build": "fable build.fsx --run",
+    "pretest": "fable-splitter test -o build/tests --commonjs",
+    "test": "mocha build/tests -t 60000"
   },
   "dependencies": {
-    "babel-runtime": "6.23.0",
-    "mssql": "^4.1.0",
-    "react": "^16.3.0",
-    "react-dom": "^16.3.0",
-    "react-json-table": "^0.1.1",
-    "rollup": "^0.57.1",
-    "rollup-plugin-cleanup": "^2.0.0",
-    "rollup-plugin-fable": "^1.1.1",
-    "rollup-plugin-filesize": "^1.5.0",
-    "tedious": "^2.3.1",
-    "ts-react-json-table": "^0.1.1"
-  },
-  "devDependencies": {
-    "babel-core": "6.25.0",
-    "babel-loader": "7.1.1",
-    "babel-plugin-transform-runtime": "6.23.0",
-    "babel-preset-env": "^1.6.1",
-    "babel-preset-es2015": "^6.24.1",
-    "electron": "^1.8.4",
-    "fable-loader": "1.1.6",
-    "fable-utils": "^1.0.6",
-    "loglevel": "^1.6.0",
-    "qunitjs": "^2.4.1",
-    "webpack": "3.10.0",
-    "webpack-dev-server": "^2.9.7",
-    "webpackbar": "^2.6.1"
+    "fable-compiler": "^2.3.3",
+    "fable-compiler-js": "^1.0.2",
+    "fable-publish-utils": "^1.0.5",
+    "fable-splitter": "^2.1.6",
+    "mocha": "^6.0.2",
+    "mssql": "^5.1.0",
+    "tedious": "^6.1.1"
   }
 }

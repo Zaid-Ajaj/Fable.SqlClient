@@ -1,101 +1,159 @@
 namespace Fable.SqlClient 
 
+open System
 open Fable.Core
-open Fable.PowerPack 
+open Fable.Core.JsInterop
 
-module SqlClient = 
+module Sql = 
 
     [<Import("*", "mssql")>] 
     let private mssql: IMSSql = jsNative
+
     [<Emit("$1[$0]")>]
     let private get<'a> (prop: string) (literal: obj) : 'a = jsNative
 
-    /// Creates and connects to a new connection pool
-    let connect (config: SqlConfig list) : Fable.Import.JS.Promise<ISqlConnectionPool> =
-        promise { 
-            let connectionConfig = SqlConfig.create config
-            let connection = ConnectionPool.create connectionConfig
-            do! connection.connect()
-            return connection
-        }
+    let private defaultProps : ISqlProps = 
+        { Config = []; Query = None; Parameters = [ ] }
 
-    /// Creates a request from the given connection pool.
-    let request (pool: ISqlConnectionPool) : ISqlRequest = 
+    let connect (initialConfig: SqlConfig list) = 
+        { defaultProps with Config = initialConfig }
+
+    let query (query: string) (config: ISqlProps) = 
+        { config with Query = Some query }
+
+    let paramters (values: SqlParam list) (config: ISqlProps) = 
+        { config with Parameters = values }
+    
+    let private createPool (config: SqlConfig) : ISqlConnectionPool = import "createConnectionPool" "./createPool.js"
+
+    /// Creates and connects to a new connection
+    let private connectToPool (config: SqlConfig list) : Async<Result<ISqlConnectionPool, SqlError>> =
+        Async.FromContinuations <| fun (resolve, reject, _) ->
+            let connectionConfig = unbox<SqlConfig> (keyValueList CaseRules.LowerFirst config) 
+            let connection = createPool connectionConfig
+            connection.connect(fun err -> 
+                if isNull err 
+                then resolve (Ok connection)
+                else
+                    connection.close() 
+                    resolve (Error (unbox err))
+            )
+
+    let private request (pool: ISqlConnectionPool) : ISqlRequest = 
         pool.request() 
     
-    /// Executes a qeury on the server that returns a result set with one or more objects of type `'a`
-    let query<'a> (query: string) (req: ISqlRequest) : Fable.Import.JS.Promise<Result<'a[], SqlError>> = 
-        req.query query
-        |> Promise.map (get<'a[]> "recordset" >> Ok)
-        |> Promise.catch (unbox<SqlError> >> Error)
+    let private rawQuery (query: string) (req: ISqlRequest) : Async<Result<obj, SqlError>> = 
+        Async.FromContinuations <| fun (resolve, reject, _) ->
+            req.query query (fun err results -> 
+                if isNull (box err) 
+                then resolve (Ok results)
+                else resolve (Error err)
+            )
 
+    let private columnDefinitions (resultset: obj) : (string * SqlType) array = import "columnDefinitions" "./InspectSchema.js"
 
-    /// Executes a query on the server and returns the first element of result set, if any. 
-    let queryScalar<'a> (sqlQuery: string) (req: ISqlRequest) : Fable.Import.JS.Promise<Result<'a, SqlError>> = 
-        promise {
-            let! results = query sqlQuery req 
-            match results with 
-            | Ok [| |] ->  
-                let sqlError = {
-                    name = SqlErrorType.RequestError
-                    code = ""
-                    stack = ""
-                    message = "Result set was empty"
-                }
+    let readDate (name: string) (row: (string * SqlValue) list) = 
+        match List.tryFind (fun (columnName, value) -> name = columnName) row with 
+        | Some (_, SqlValue.Date date) -> Some date 
+        | _ -> None
 
-                return Error sqlError
-            | Ok elements  ->
-                let element = elements.[0]
-                let keys = Fable.Import.JS.Object.keys element
-                return Ok (get<'a> keys.[0] element) 
-            | Error error -> return Error error
+    let readInt (name: string) (row: (string * SqlValue) list) = 
+        match List.tryFind (fun (columnName, value) -> name = columnName) row with 
+        | Some (_, SqlValue.Int value) -> Some value  
+        | _ -> None
+
+    let readString (name: string) (row: (string * SqlValue) list) = 
+        match List.tryFind (fun (columnName, value) -> name = columnName) row with 
+        | Some (_, SqlValue.String value) -> Some value  
+        | _ -> None
+   
+    let readBit (name: string) (row: (string * SqlValue) list) = 
+        match List.tryFind (fun (columnName, value) -> name = columnName) row with 
+        | Some (_, SqlValue.Bool value) -> Some value  
+        | _ -> None 
+        
+    let executeRows<'t> (map: (string * SqlValue) list -> Option<'t>) (config: ISqlProps) : Async<Result<'t list, SqlError>> = 
+        async {
+            let! connectionResult = connectToPool config.Config
+            match connectionResult with 
+            | Error err -> return Error err 
+            | Ok connection ->
+                let queryRequest = request connection
+                let! results = rawQuery config.Query.Value queryRequest
+                match results with 
+                | Error requestErr -> 
+                    connection.close()
+                    return Error requestErr 
+                | Ok resultset ->
+                    try 
+                        let metadata = columnDefinitions resultset
+                        let recordset : obj[] = get "recordset" resultset
+                        let rows = ResizeArray()
+                        for row in recordset do 
+                            let rowValues = ResizeArray<string * SqlValue>()
+                            for (columnName, columnType) in metadata do
+                                match columnType with 
+                                | SqlType.TinyInt -> rowValues.Add(columnName, SqlValue.TinyInt (unbox (get columnName row)))
+                                | SqlType.SmallInt -> rowValues.Add(columnName, SqlValue.SmallInt (unbox (get columnName row)))
+                                | SqlType.Int -> rowValues.Add (columnName, SqlValue.Int (unbox (get columnName row)))
+                                | SqlType.DateTime -> rowValues.Add (columnName, SqlValue.Date (unbox (get columnName row)))
+                                | SqlType.Number -> rowValues.Add(columnName, SqlValue.Number (get columnName row))
+                                | SqlType.NVarChar -> rowValues.Add(columnName, SqlValue.String (get columnName row))
+                                | SqlType.Decimal -> rowValues.Add(columnName, SqlValue.Decimal (decimal (get columnName row)))
+                                | SqlType.Money -> rowValues.Add(columnName, SqlValue.Decimal (decimal (get columnName row)))
+                                | SqlType.BigInt -> rowValues.Add(columnName, SqlValue.BigInt (int64 (get<string> columnName row)))
+                                | SqlType.Bit -> rowValues.Add(columnName, SqlValue.Bool (get columnName row))
+                                | SqlType.DateTimeOffset -> rowValues.Add(columnName, SqlValue.Date (unbox (get columnName row)))
+                                | SqlType.UniqueIdentifier -> rowValues.Add(columnName, SqlValue.UniqueIdentifier (Guid.Parse(get<string> columnName row)))
+                            match map (List.ofSeq rowValues) with  
+                            | Some value -> rows.Add value  
+                            | None -> ()
+
+                        connection.close()
+                        return Ok (List.ofSeq rows)
+                    
+                    with 
+                    | ex -> 
+                        connection.close()
+                        return! raise ex 
         }
 
-    let private convertSqlType = function 
-        | SqlTypes.Char n -> mssql.Char n 
-        | SqlTypes.CharMax -> mssql.Char mssql.MAX
-        | SqlTypes.NChar n -> mssql.NChar n
-        | SqlTypes.NCharMax -> mssql.NChar mssql.MAX
-        | SqlTypes.UniqueIdentifier -> mssql.UniqueIdentifier
-        | SqlTypes.VarCharMax -> mssql.VarChar mssql.MAX
-        | SqlTypes.Int -> mssql.Int 
-        | SqlTypes.Float -> mssql.Float
-        | SqlTypes.VarChar n -> mssql.VarChar n
-        | SqlTypes.BigInt -> mssql.BigInt  
-        | SqlTypes.Binary -> mssql.Binary 
-        | SqlTypes.VarBinary n -> mssql.VarBinary n
-        | SqlTypes.VarBinaryMax -> mssql.VarBinary mssql.MAX
-        | SqlTypes.NVarChar n -> mssql.NVarChar n
-        | SqlTypes.NVarCharMax -> mssql.NVarChar mssql.MAX
-        | SqlTypes.Bit -> mssql.Bit
-        | SqlTypes.Date -> mssql.Date 
-        | SqlTypes.DateTime -> mssql.DateTime
-        | SqlTypes.Money -> mssql.Money 
-        | SqlTypes.SmallInt -> mssql.SmallInt
-        | SqlTypes.SmallDateTime -> mssql.SmallDateTime
-        | SqlTypes.NText -> mssql.NText 
-        | SqlTypes.Text -> mssql.Text
-        | SqlTypes.Numeric (x, y) -> mssql.Numeric x y
-        | SqlTypes.Time n -> mssql.Time n
-        | SqlTypes.DateTime2 n -> mssql.DateTime2 n
-        | SqlTypes.DateTimeOffset n -> mssql.DateTimeOffset n
-        | SqlTypes.Decimal (x, y) -> mssql.Decimal x y
-        | SqlTypes.Variant -> mssql.Variant
+    let executeScalar (config: ISqlProps) : Async<Result<SqlValue, SqlError>> = 
+        async {
+            let! connectionResult = connectToPool config.Config
+            match connectionResult with 
+            | Error err -> return Error err 
+            | Ok connection ->
+                let queryRequest = request connection
+                let! results = rawQuery config.Query.Value queryRequest
+                match results with 
+                | Error requestErr -> 
+                    connection.close()
+                    return Error requestErr 
+                | Ok resultset ->
+                    try 
+                        let metadata = columnDefinitions resultset
+                        let scalarType = metadata |> Array.map snd |> Array.item 0 
+                        let value : obj = get "" (Array.item 0 (get "recordset" resultset))
+                        let parsedValue = 
+                            match scalarType with 
+                            | SqlType.TinyInt -> SqlValue.TinyInt (unbox value) 
+                            | SqlType.SmallInt -> SqlValue.SmallInt (unbox value)
+                            | SqlType.BigInt -> SqlValue.BigInt (int64 (unbox<string> value))
+                            | SqlType.Int -> SqlValue.Int (unbox value)
+                            | SqlType.Number -> SqlValue.Number (unbox value)
+                            | SqlType.DateTime -> SqlValue.Date (unbox value)
+                            | SqlType.DateTimeOffset -> SqlValue.Date (unbox value)
+                            | SqlType.Decimal -> SqlValue.Decimal (decimal (unbox<float> value))
+                            | SqlType.Money -> SqlValue.Decimal (decimal (unbox<float> value))
+                            | SqlType.UniqueIdentifier -> SqlValue.UniqueIdentifier (Guid.Parse (unbox<string> value))
+                            | SqlType.Bit -> SqlValue.Bool (unbox value)
+                            | SqlType.NVarChar -> SqlValue.String (unbox value)
 
-    let input (name: string) (dataType: SqlTypes) (value: 'a) (req: ISqlRequest) =
-        req.input name (convertSqlType dataType) value 
-        req
-        
-    let output (name: string) (dataType: SqlTypes) (req: ISqlRequest) =
-        req.output name (convertSqlType dataType) 
-        req
-
-    /// Executes a statement and returns the number of the rows affected
-    let executeNonQuery (sqlQuery)  (req: ISqlRequest) : Fable.Import.JS.Promise<Result<int, SqlError>> = 
-        promise {
-            let! result = req.query sqlQuery
-            let rowsAffected = get<int[]> "rowsAffected" result
-            return Ok (rowsAffected.[0])
+                        connection.close()
+                        return Ok parsedValue 
+                    with 
+                    | ex -> 
+                        connection.close() 
+                        return! raise ex
         } 
-        |> Promise.catch (unbox<SqlError> >> Error)
-
