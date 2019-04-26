@@ -37,6 +37,7 @@ type SqlConfig =
 
 [<StringEnum>]
 type SqlType =
+    | [<CompiledName("Float")>] Float
     | [<CompiledName("Int")>] Int
     | [<CompiledName("DateTime")>] DateTime
     | [<CompiledName("UniqueIdentifier")>] UniqueIdentifier
@@ -62,15 +63,27 @@ type SqlValue =
     | String of string 
     | Number of float 
 
-[<Erase>]
-type SqlParam = 
-    | SqlParam
-    
-    static member inline From(value: int) = unbox<SqlParam> [ value, SqlType.Int ]
-    static member inline From(value: string) = unbox<SqlParam> [ value, SqlType.NVarChar ]
-    static member inline From(value: decimal) = unbox<SqlParam> [ value, SqlType.NVarChar ]
-    static member inline From(value: DateTime) = unbox<SqlParam> [ value, SqlType.NVarChar ]
-    static member inline From(value: Guid) = unbox<SqlParam> [ value, SqlType.NVarChar ]
+type SqlParam() = 
+    static member inline From(name: string, value: int) = 
+        unbox<SqlParam> [| name, value, SqlType.Int |]
+    static member inline From(name: string, value: uint8) = 
+        unbox<SqlParam> [| name, value, SqlType.TinyInt |]
+    static member inline From(name: string, value: int16) = 
+        unbox<SqlParam> [| name, value, SqlType.SmallInt |]
+    static member inline From(name: string, value: int64) = 
+        unbox<SqlParam> [| name, value, SqlType.BigInt |]
+    static member inline From(name: string, value: bool) = 
+        unbox<SqlParam> [| name, value, SqlType.Bit |] 
+    static member inline From(name: string, value: string) = 
+        unbox<SqlParam> [| name, value, SqlType.NVarChar |]
+    static member inline From(name: string, value: decimal) = 
+        unbox<SqlParam> [| name, value, SqlType.Decimal |]
+    static member inline From(name: string, value: DateTime) = 
+        unbox<SqlParam> [| name, value, SqlType.DateTime |]
+    static member inline From(name: string, value: Guid) = 
+        unbox<SqlParam> [| name, value, SqlType.UniqueIdentifier |]
+    static member inline From(name: string, value: DateTimeOffset) = 
+        unbox<SqlParam> [| name, value, SqlType.DateTimeOffset |]
 
 type ISqlProps = {
     Config: SqlConfig list
@@ -78,16 +91,16 @@ type ISqlProps = {
     Parameters: SqlParam list
 }
 
-[<StringEnumAttribute>]
-type SqlErrorType =
-    | [<CompiledName("ConnectionError")>] ConnectionError
-    | [<CompiledName("TransactionError")>]  TransactionError
-    | [<CompiledName("RequestError")>] RequestError
-    | [<CompiledName("PreparedStatementError")>] PreparedStatementError
-
-type SqlError = {
-    name : SqlErrorType
+type NativeSqlError = {
+    name : string
     code : string
     message : string 
     stack : string
 }
+
+type SqlError = 
+    | ConnectionError of message: string * stack: string
+    | TransactionError of message: string * stack: string 
+    | RequestError of message: string * stack: string 
+    | ApplicationError of message: string * stack: string 
+    | GenericError of errorType: string * message: string * stack: string

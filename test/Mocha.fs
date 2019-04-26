@@ -23,7 +23,7 @@ let failTest msg =
 let testCase name body = SyncTest(name, body)
 let testCaseAsync name body = AsyncTest(name, body)
 let testList name tests = TestModule(name, tests)
-
+let pass() = areEqual true true
 let [<Global>] private describe (name: string) (f: unit->unit) = jsNative
 let [<Global>] private it (msg: string) (f: unit->unit) = jsNative
 
