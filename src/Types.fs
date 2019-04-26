@@ -46,6 +46,7 @@ type SqlType =
     | [<CompiledName("SmallInt")>] SmallInt 
     | [<CompiledName("DateTimeOffset")>] DateTimeOffset 
     | [<CompiledName("NVarChar")>] NVarChar 
+    | [<CompiledName("VarChar")>] VarChar 
     | [<CompiledName("Decimal")>] Decimal 
     | [<CompiledName("Number")>] Number 
     | [<CompiledName("Bit")>] Bit
@@ -65,25 +66,25 @@ type SqlValue =
 
 type SqlParam() = 
     static member inline From(name: string, value: int) = 
-        unbox<SqlParam> [| name, value, SqlType.Int |]
+        unbox<SqlParam> (name, value, SqlType.Int)
     static member inline From(name: string, value: uint8) = 
-        unbox<SqlParam> [| name, value, SqlType.TinyInt |]
+        unbox<SqlParam> (name, value, SqlType.TinyInt)
     static member inline From(name: string, value: int16) = 
-        unbox<SqlParam> [| name, value, SqlType.SmallInt |]
+        unbox<SqlParam> (name, value, SqlType.SmallInt)
     static member inline From(name: string, value: int64) = 
-        unbox<SqlParam> [| name, value, SqlType.BigInt |]
+        unbox<SqlParam> (name, value, SqlType.BigInt)
     static member inline From(name: string, value: bool) = 
-        unbox<SqlParam> [| name, value, SqlType.Bit |] 
+        unbox<SqlParam> (name, value, SqlType.Bit) 
     static member inline From(name: string, value: string) = 
-        unbox<SqlParam> [| name, value, SqlType.NVarChar |]
+        unbox<SqlParam> (name, value, SqlType.NVarChar)
     static member inline From(name: string, value: decimal) = 
-        unbox<SqlParam> [| name, value, SqlType.Decimal |]
+        unbox<SqlParam> (name, value, SqlType.Decimal)
     static member inline From(name: string, value: DateTime) = 
-        unbox<SqlParam> [| name, value, SqlType.DateTime |]
+        unbox<SqlParam> (name, value, SqlType.DateTime)
     static member inline From(name: string, value: Guid) = 
-        unbox<SqlParam> [| name, value, SqlType.UniqueIdentifier |]
+        unbox<SqlParam> (name, value, SqlType.UniqueIdentifier)
     static member inline From(name: string, value: DateTimeOffset) = 
-        unbox<SqlParam> [| name, value, SqlType.DateTimeOffset |]
+        unbox<SqlParam> (name, value, SqlType.DateTimeOffset)
 
 type ISqlProps = {
     Config: SqlConfig list

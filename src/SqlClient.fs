@@ -100,6 +100,36 @@ module Sql =
         | Some (_, SqlValue.Number value) -> Some value  
         | _ -> None 
 
+    let private populateParameters (request: ISqlRequest) (parameters: SqlParam list) : unit = 
+        for paramter in parameters do 
+            let (name, value, sqlType) : (string * obj * SqlType) = unbox paramter
+            let sanitizedName = 
+                if name.StartsWith "@"
+                then name.[1..]
+                else name 
+            match sqlType with 
+            | SqlType.Int -> request.input sanitizedName  mssql.Int value  
+            | SqlType.SmallInt -> request.input sanitizedName mssql.SmallInt value 
+            | SqlType.BigInt -> request.input sanitizedName mssql.BigInt (string (unbox<int64> value)) 
+            | SqlType.Float -> request.input sanitizedName mssql.Float value 
+            | SqlType.Bit -> request.input sanitizedName mssql.Bit value 
+            | SqlType.NVarChar -> request.input sanitizedName (mssql.VarChar(mssql.MAX)) value 
+            | SqlType.DateTime -> request.input sanitizedName mssql.DateTime value
+            | SqlType.UniqueIdentifier -> 
+                let value = unbox<Guid> value 
+                let serialized = value.ToString()
+                request.input sanitizedName (mssql.UniqueIdentifier) serialized
+            | SqlType.DateTimeOffset -> 
+                let value = unbox<DateTimeOffset> value
+                let serialzied = value.ToString("o")
+                request.input sanitizedName (mssql.DateTimeOffset(7)) serialzied
+            | SqlType.Decimal -> 
+                let value = unbox<decimal> value 
+                let serialized = value.ToString()
+                request.input sanitizedName (mssql.Decimal 18 10) serialized
+
+            | _ -> failwithf "Using parameter '%s' of type '%s' is not supported" name (unbox sqlType)
+        
     let readRows<'t> (map: (string * SqlValue) list -> Option<'t>) (config: ISqlProps) : Async<Result<'t list, SqlError>> = 
         async {
             let! connectionResult = connectToPool config.Config
@@ -107,6 +137,7 @@ module Sql =
             | Error connectionError -> return Error connectionError  
             | Ok connection ->
                 let queryRequest = request connection
+                populateParameters queryRequest config.Parameters
                 let sqlQuery = defaultArg config.Query ""
                 let! results = rawQuery sqlQuery queryRequest
                 match results with 
@@ -128,7 +159,7 @@ module Sql =
                                 | SqlType.Int -> rowValues.Add (columnName, SqlValue.Int (unbox (get columnName row)))
                                 | SqlType.DateTime -> rowValues.Add (columnName, SqlValue.Date (unbox (get columnName row)))
                                 | SqlType.Number -> rowValues.Add(columnName, SqlValue.Number (get columnName row))
-                                | SqlType.NVarChar -> rowValues.Add(columnName, SqlValue.String (get columnName row))
+                                | (SqlType.NVarChar | SqlType.VarChar) -> rowValues.Add(columnName, SqlValue.String (get columnName row))
                                 | SqlType.Decimal -> rowValues.Add(columnName, SqlValue.Decimal (decimal (get columnName row)))
                                 | SqlType.Money -> rowValues.Add(columnName, SqlValue.Decimal (decimal (get columnName row)))
                                 | SqlType.BigInt -> rowValues.Add(columnName, SqlValue.BigInt (int64 (get<string> columnName row)))
@@ -147,6 +178,8 @@ module Sql =
                         connection.close()
                         return Error (toSqlError (applicationError ex))
         }
+    
+
 
     let readScalar (config: ISqlProps) : Async<Result<SqlValue, SqlError>> = 
         async {
@@ -155,6 +188,7 @@ module Sql =
             | Error err -> return Error err 
             | Ok connection ->
                 let queryRequest = request connection
+                populateParameters queryRequest config.Parameters
                 let sqlQuery = defaultArg config.Query ""
                 let! results = rawQuery sqlQuery queryRequest
                 match results with 
@@ -180,7 +214,7 @@ module Sql =
                             | SqlType.Money -> SqlValue.Decimal (decimal (unbox<float> value))
                             | SqlType.UniqueIdentifier -> SqlValue.UniqueIdentifier (Guid.Parse (unbox<string> value))
                             | SqlType.Bit -> SqlValue.Bool (unbox value)
-                            | SqlType.NVarChar -> SqlValue.String (unbox value)
+                            | (SqlType.NVarChar | SqlType.VarChar) -> SqlValue.String (unbox value)
 
                         connection.close()
                         return Ok parsedValue 
@@ -197,6 +231,7 @@ module Sql =
             | Error err -> return Error err 
             | Ok connection ->
                 let queryRequest = request connection
+                populateParameters queryRequest config.Parameters
                 let sqlQuery = defaultArg config.Query ""
                 let! results = rawQuery sqlQuery queryRequest
                 match results with 

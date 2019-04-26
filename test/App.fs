@@ -79,6 +79,7 @@ let sqlClientTests =
                     failTest (Json.stringify otherwise)
             }
 
+
         testCaseAsync "Sql.readScalar works with DateTime" <| fun () -> 
             async {
                 let! value = 
@@ -93,6 +94,37 @@ let sqlClientTests =
                     isTrue (now > yesterday)
 
                 | other -> failwith "Unexpected results"
+            }
+
+        testCaseAsync "Sql.readScalar with parameterized query: DateTime roundtrip" <| fun () ->
+            async {
+                let! value =
+                   defaultConfig
+                   |> Sql.connect
+                   |> Sql.query "SELECT @date"
+                   |> Sql.paramters [ SqlParam.From("@date", DateTime.Now) ]
+                   |> Sql.readScalar
+
+                match value with 
+                | Ok (SqlValue.Date now) ->  
+                    let yesterday = DateTime.Now.AddDays(-1.0) 
+                    isTrue (now > yesterday)
+
+                | otherwise -> return! failwithf "Unexpected results:\n%s" (Json.stringify otherwise)
+            }
+
+        testCaseAsync "Sql.readScalar with parameterized query: Boolean roundtrip" <| fun () ->
+            async {
+                let! value =
+                   defaultConfig
+                   |> Sql.connect
+                   |> Sql.query "SELECT @value"
+                   |> Sql.paramters [ SqlParam.From("@value", true) ]
+                   |> Sql.readScalar
+
+                match value with 
+                | Ok (SqlValue.Bool true) -> pass()
+                | otherwise -> return! failwithf "Unexpected results:\n%s" (Json.stringify otherwise)
             }
 
         testCaseAsync "Sql.readScalar works with Unique identifier" <| fun () -> 
@@ -132,16 +164,16 @@ let sqlClientTests =
                 let! jsonResult = 
                     defaultConfig
                     |> Sql.connect
-                    |> Sql.query "SELECT id, name FROM (VALUES (1, 'Fable'), (2, 'F#')) AS Awesome(id, name) FOR JSON PATH"
+                    |> Sql.query "SELECT id, name FROM (VALUES (42, 'Fable'), (31415, 'F#')) AS Awesome(id, name) FOR JSON PATH"
                     |> Sql.readJson 
                 
                 match jsonResult with 
                 | Ok jsonAsText -> 
                     let values = Json.parseNativeAs<{| id: int; name: string |} array> jsonAsText
                     areEqual 2 values.Length
-                    areEqual 1 values.[0].id 
+                    areEqual 42 values.[0].id 
                     areEqual "Fable" values.[0].name 
-                    areEqual 2 values.[1].id 
+                    areEqual 31415 values.[1].id 
                     areEqual "F#" values.[1].name
                 
                 | Error error -> failwithf "Unexpected error:\n%s" (Json.stringify error)
@@ -158,6 +190,49 @@ let sqlClientTests =
                 
                 match jsonValues with 
                 | Error (SqlError.ApplicationError(_)) -> pass()
+                | otherwise -> failwith ("Unexpected result:\n" + Json.stringify otherwise)
+            }
+
+        testCaseAsync "Sql.readRows works with parameterized queries" <| fun () -> 
+            async {
+                let! values = 
+                    defaultConfig
+                    |> Sql.connect 
+                    |> Sql.query "SELECT id, name FROM (VALUES (@id, @name)) AS Awesome(id, name)"
+                    |> Sql.paramters [ SqlParam.From("@id", 42); SqlParam.From("@name", "Fable.SqlClient") ]
+                    |> Sql.readRows (fun row -> 
+                        option {
+                            let! id = Sql.readInt "id" row
+                            let! name = Sql.readString "name" row 
+                            return (id, name)
+                        })
+
+                match values with 
+                | Ok [ (42, "Fable.SqlClient") ] -> pass()
+                | otherwise -> return! failwithf "Unexpected results: %s" (Json.stringify otherwise)
+            }
+
+        testCaseAsync "Sql.readJson works with parameterized queries" <| fun () ->
+            async {
+                let inputGuid = Guid.NewGuid()
+                let! result = 
+                    defaultConfig
+                    |> Sql.connect
+                    |> Sql.query "SELECT id, name, guid FROM (VALUES (@id, @name, @guid)) AS Awesome(id, name, guid) FOR JSON PATH"
+                    |> Sql.paramters [
+                        SqlParam.From("@id", 42)
+                        SqlParam.From("@name", "Fable")
+                        SqlParam.From("@guid", inputGuid) ]
+                    |> Sql.readJson 
+                
+                match result with 
+                | Ok jsonText -> 
+                    let values = Json.parseNativeAs<{| id: int; name: string; guid: Guid |} array> jsonText 
+                    areEqual 1 values.Length
+                    areEqual 42 values.[0].id 
+                    areEqual "Fable" values.[0].name 
+                    areEqual (inputGuid.ToString().ToLower()) (values.[0].guid.ToString().ToLower())
+
                 | otherwise -> failwith ("Unexpected result:\n" + Json.stringify otherwise)
             }
 
