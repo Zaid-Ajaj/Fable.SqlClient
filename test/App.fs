@@ -7,8 +7,6 @@ open Fable.Core.JsInterop
 open Fable.SimpleJson
 open Fable.SqlClient
 open Fable.SqlClient.OptionWorkflow
-open Fable.SqlClient
-open Fable.SqlClient
 
 let environmentVariables() : (string * string) [] = import "envVars" "./util.js" 
 
