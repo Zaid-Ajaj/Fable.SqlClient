@@ -188,7 +188,7 @@ val Sql.readJson (props: ISqlProps) -> Async<Result<string, SqlError>>
 
 val Sql.readScalar (props: ISqlProps) -> Async<Result<SqlValue, SqlError>>
 ```
-where the important types are defined as follows:
+where the important types are defined as follows. The types within `SqlValue` are those that you can read from Sql Server.
 ```fs
 type SqlValue = 
     | TinyInt of uint8
