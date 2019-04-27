@@ -167,7 +167,7 @@ async {
         |> Sql.readJson 
     
     // if the query is succesful 
-    // then `json` ==  OK [{ "id": 42, "name": "Fable" }]
+    // then `json` ==  Ok [{ "id": 42, "name": "Fable" }]
     match json with 
     | Ok serialized = 
         let values = Json.parseAs<{| id: int; name: string |} array> serialized
