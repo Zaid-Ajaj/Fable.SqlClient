@@ -82,6 +82,9 @@ async {
 # `Sql.readRows` from a parameterized query
 Queries can be parameterized with named parameters to avoid SQL injections: 
 ```fs
+open Fable.SqlClient
+open Fable.SqlClient.OptionWorkflow
+
 let userByUsername (username: string) : Async<User option> = 
     async {
         let! results = 
@@ -126,7 +129,7 @@ let userExists (name: string) : Async<bool> =
         let! exists = 
             connectionConfig
             |> Sql.connect
-            |> Sql.storedProcedure "user_exits"
+            |> Sql.storedProcedure "user_exists"
             |> Sql.parameters [ SqlParam.From("@name", name) ]
             |> Sql.readScalar 
 
@@ -160,18 +163,16 @@ let deleteOldEvents() : Async<Result<int, string>> =
 Since Microsoft SQL Server supports JSON natively, you can query the database and have it return the result set as a single JSON string. `Sql.readJson` is a utility function that extracts the JSON from the scalar value. You can then parse the resulting serialized JSON using your favorite Json library:
 ```fs
 async {
-    let! json = // json : Result<string, SqlError> 
+    let! json =
         connectionConfig
         |> Sql.connect
         |> Sql.query "SELECT id, name FROM (VALUES(42, N'Fable')) as TableName(id, name) FOR JSON PATH"
         |> Sql.readJson 
     
-    // if the query is succesful 
-    // then `json` ==  Ok [{ "id": 42, "name": "Fable" }]
     match json with 
     | Ok serialized = 
         let values = Json.parseAs<{| id: int; name: string |} array> serialized
-        let value = values.[0] // there is only one row returned
+        let value = values.[0] 
         printfn "Id = %d and Name = %s" value.id value.name
     
     | Error error -> 
