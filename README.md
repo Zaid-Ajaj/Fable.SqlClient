@@ -87,7 +87,7 @@ let userByUsername (username: string) : Async<User option> =
         let! results = 
             connectionConfig
             |> Sql.connect
-            |> Sql.query "SELECT id, name from [dbo].[Users] where name = @name"
+            |> Sql.query "SELECT TOP 1 id, name from [dbo].[Users] where name = @name"
             |> Sql.parameters [ SqlParam.From ("@name", username) ]
             |> Sql.readRows (fun row ->
                 option {
@@ -97,7 +97,7 @@ let userByUsername (username: string) : Async<User option> =
                 })
 
         match results with 
-        | Ok (user :: users) -> return Some user 
+        | Ok (user :: _) -> return Some user 
         | _ -> return None
     }
 ```
