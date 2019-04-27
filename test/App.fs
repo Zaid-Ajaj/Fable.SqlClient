@@ -3,6 +3,7 @@ module App
 open System
 open Mocha
 open Fable.Core
+open Fable.Core.JS
 open Fable.Core.JsInterop
 open Fable.SimpleJson
 open Fable.SqlClient
@@ -50,7 +51,7 @@ let defaultConfig =
       SqlConfig.Password (getVar "SQLCLIENT_PASSWORD") 
       SqlConfig.ConnectionTimeout 15000 ]
 
-Fable.Core.JS.console.log(keyValueList CaseRules.LowerFirst defaultConfig)
+console.log(keyValueList CaseRules.LowerFirst defaultConfig)
 
 module ByteArray =
     [<Emit("Buffer.from($0).toString('utf8')")>]
@@ -81,23 +82,6 @@ let sqlClientTests =
 
                 | otherwise ->  
                     failTest (Json.stringify otherwise)
-            }
-
-        testCaseAsync "(Ab)use Sql.readJson to read binary" <| fun () ->
-            async {
-                let! json = 
-                    defaultConfig
-                    |> Sql.connect 
-                    |> Sql.query "SELECT 0x5468697320697320612074657374 as [Binary] FOR JSON PATH"
-                    |> Sql.readJson 
-                
-                match json with 
-                | Ok serialized ->
-                    let deserialized = Json.parseAs<{| Binary: byte[] |} array> serialized 
-                    let text = ByteArray.decodeUtf8 deserialized.[0].Binary
-                    areEqual "This is a test" text 
-
-                | otherwise -> failTest (sprintf "Unexpected result: %s" (Json.stringify otherwise))
             }
 
         testCaseAsync "Sql.readScalar: byte[] round trip" <| fun () ->
@@ -131,6 +115,42 @@ let sqlClientTests =
                 | other -> failwith "Unexpected results"
             }
 
+        testCaseAsync "Sql.readScalar understands DateTimeOffset if returned from string and can be parsed" <| fun () ->
+            async {
+                let! value = 
+                    defaultConfig 
+                    |> Sql.connect 
+                    |> Sql.query "SELECT CONVERT(nvarchar(100), CAST('2007-05-08 12:35:29.1234567+12:15' as datetimeoffset(7))) as [DateTimeOffset]"
+                    |> Sql.readScalar 
+                
+                match value with
+                | Ok (SqlValue.String value) ->
+                    areEqual "2007-05-08 12:35:29.1234567 +12:15" value 
+                    // value can be parsed
+                    let parsed = DateTimeOffset.Parse value 
+                    pass()
+                | otherwise -> return! failwithf "Unexpected results:\n%s" (Json.stringify otherwise)
+            }
+
+        testCaseAsync "DateTimeOffset round trip" <| fun () -> 
+            async {
+                let input = DateTimeOffset.UtcNow
+
+                let! value = 
+                    defaultConfig
+                    |> Sql.connect 
+                    |> Sql.query "SELECT CONVERT(nvarchar(100), @DateTimeOffset) as [Value]"
+                    |> Sql.parameters [ SqlParam.From("@DateTimeOffset", input) ]
+                    |> Sql.readScalar 
+
+                match value with 
+                | Ok (SqlValue.String serialized) -> 
+                    let deserialized = DateTimeOffset.Parse serialized 
+                    areEqual input deserialized
+
+                | otherwise -> return! failwithf "Unexpected results:\n%s" (Json.stringify otherwise)
+            }
+
         testCaseAsync "Sql.readScalar works with named DateTime" <| fun () -> 
             async {
                 let! value = 
@@ -144,7 +164,7 @@ let sqlClientTests =
                     let yesterday = DateTime.Now.AddDays(-1.0)
                     isTrue (now > yesterday)
 
-                | other -> failwith "Unexpected results"
+                | otherwise -> return! failwithf "Unexpected results:\n%s" (Json.stringify otherwise)
             }
 
         testCaseAsync "Sql.readScalar with parameterized query: DateTime roundtrip" <| fun () ->
@@ -238,7 +258,6 @@ let sqlClientTests =
                     |> isFalse
 
                 | other -> failwithf "Unexpected results %s" (Json.stringify other)
-                    
             }
 
         testCaseAsync "Sql.readScalar works with bigint" <| fun () -> 
@@ -369,6 +388,24 @@ let sqlClientTests =
                 match rowCount with 
                 | Ok 2 -> pass()
                 | otherwise -> failwithf "Unpexpected results: %s" (Json.stringify otherwise)
+            }
+
+        testCaseAsync "(Ab)use Sql.readJson to read binary" <| fun () ->
+            async {
+                let! json = 
+                    defaultConfig
+                    |> Sql.connect 
+                    |> Sql.query "SELECT 0x5468697320697320612074657374 as [Binary] FOR JSON PATH"
+                    |> Sql.readJson 
+                
+                match json with 
+                | Ok serialized ->
+                    // serialized = [ { "Binary": base64(0x5468697320697320612074657374) } ]
+                    let deserialized = Json.parseAs<{| Binary: byte[] |} array> serialized 
+                    let text = ByteArray.decodeUtf8 deserialized.[0].Binary
+                    areEqual "This is a test" text 
+
+                | otherwise -> failTest (sprintf "Unexpected result: %s" (Json.stringify otherwise))
             }
 
         testCaseAsync "Executing stored procedure works" <| fun () ->

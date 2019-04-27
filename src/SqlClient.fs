@@ -93,6 +93,11 @@ module Sql =
         | Some (_, SqlValue.SmallInt value) -> Some (int32 value)
         | _ -> None
 
+    let readBigInt (name: string) (row: (string * SqlValue) list) = 
+        match List.tryFind (fun (columnName, value) -> name = columnName) row with 
+        | Some (_, SqlValue.BigInt value) -> Some value
+        | _ -> None        
+
     let readString (name: string) (row: (string * SqlValue) list) = 
         match List.tryFind (fun (columnName, value) -> name = columnName) row with 
         | Some (_, SqlValue.String value) -> Some value  
@@ -114,6 +119,16 @@ module Sql =
         | Some (_, SqlValue.SmallInt value) -> Some (float value)
         | Some (_, SqlValue.Number value) -> Some value  
         | _ -> None 
+
+    let readDateTimeOffset (name: string) (row: (string * SqlValue) list) = 
+        match List.tryFind (fun (columnName, value) -> name = columnName) row with 
+        | Some (_, SqlValue.String value) -> Some (DateTimeOffset.Parse(value))
+        | _ -> None        
+
+    let readBinary (name: string) (row: (string * SqlValue) list) = 
+        match List.tryFind (fun (columnName, value) -> name = columnName) row with 
+        | Some (_, SqlValue.Binary value) -> Some value  
+        | _ -> None
 
     [<Emit("Buffer.from($0)")>]
     let private bufferFromBytes (bytes: byte[]) : obj = jsNative
@@ -140,11 +155,12 @@ module Sql =
                 | SqlType.UniqueIdentifier -> 
                     let value = unbox<Guid> value 
                     let serialized = value.ToString()
-                    request.input sanitizedName (mssql.UniqueIdentifier) serialized
+                    request.input sanitizedName mssql.UniqueIdentifier serialized
                 | SqlType.DateTimeOffset -> 
                     let value = unbox<DateTimeOffset> value
-                    let serialzied = value.ToString("o")
-                    request.input sanitizedName (mssql.DateTimeOffset(7)) serialzied
+                    // passed value required that this function is attached to the Date instance
+                    value?getTimezoneOffset <- (fun () -> -value.Offset.TotalMinutes)
+                    request.input sanitizedName (mssql.DateTimeOffset(7)) value
                 | SqlType.Decimal -> 
                     let value = unbox<decimal> value 
                     let serialized = value.ToString()
@@ -156,6 +172,12 @@ module Sql =
         with 
         | ex -> onError() 
 
+    [<Emit("$0 instanceof Date")>]
+    let private isDate (x: obj) = jsNative
+
+    [<Emit("typeof $0 === 'string'")>]
+    let private typeofString (x: obj) = jsNative 
+    
     let readRows<'t> (map: (string * SqlValue) list -> Option<'t>) (config: ISqlProps) : Async<Result<'t list, SqlError>> = 
         async {
             let! connectionResult = connectToPool config.Config
@@ -197,7 +219,7 @@ module Sql =
                                 | SqlType.BigInt -> rowValues.Add(columnName, SqlValue.BigInt (int64 (get<string> columnName row)))
                                 | SqlType.Bit -> rowValues.Add(columnName, SqlValue.Bool (get columnName row))
                                 | SqlType.VarBinary -> rowValues.Add(columnName, SqlValue.Binary(unbox (get columnName row)))
-                                | SqlType.DateTimeOffset -> rowValues.Add(columnName, SqlValue.Date (unbox (get columnName row)))
+                                | SqlType.DateTimeOffset -> failwithf "Querying column '%s' directly as DateTimeOffset is not supported. Please convert the column value to nvarchar as follows: CONVERT(NVARCHAR(100), DateTimeOffsetColumn)." columnName
                                 | SqlType.UniqueIdentifier -> rowValues.Add(columnName, SqlValue.UniqueIdentifier (Guid.Parse(get<string> columnName row)))
                             match map (List.ofSeq rowValues) with  
                             | Some value -> rows.Add value  
@@ -271,7 +293,7 @@ module Sql =
                             | SqlType.Int -> SqlValue.Int (unbox value)
                             | SqlType.Number -> SqlValue.Number (unbox value)
                             | SqlType.DateTime -> SqlValue.Date (unbox value)
-                            | SqlType.DateTimeOffset -> SqlValue.Date (unbox value)
+                            | SqlType.DateTimeOffset -> failwith "Querying scalar directly as DateTimeOffset is not supported. Please convert the column value to nvarchar as follows: CONVERT(NVARCHAR(100), DateTimeOffsetColumn) and then parse it using DateTimeOffset.Parse"
                             | SqlType.Decimal -> SqlValue.Decimal (decimal (unbox<float> value))
                             | SqlType.Money -> SqlValue.Decimal (decimal (unbox<float> value))
                             | SqlType.UniqueIdentifier -> SqlValue.UniqueIdentifier (Guid.Parse (unbox<string> value))
@@ -320,4 +342,4 @@ module Sql =
                     | ex -> 
                         connection.close() 
                         return Error (toSqlError (applicationError ex))
-        } 
+        }

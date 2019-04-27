@@ -53,6 +53,7 @@ type SqlType =
     | [<CompiledName("Money")>] Money 
     | [<CompiledName "VarBinary">] VarBinary
 
+[<RequireQualifiedAccess>]
 type SqlValue = 
     | TinyInt of uint8
     | SmallInt of int16
