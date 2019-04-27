@@ -89,6 +89,7 @@ type SqlParam() =
 type ISqlProps = {
     Config: SqlConfig list
     Query: string option 
+    StoredProcedure: bool
     Parameters: SqlParam list
 }
 
@@ -105,3 +106,12 @@ type SqlError =
     | RequestError of message: string * stack: string 
     | ApplicationError of message: string * stack: string 
     | GenericError of errorType: string * message: string * stack: string
+
+    with 
+        member this.Info() = 
+            match this with 
+            | ConnectionError(msg, stack) -> ("ConnectionError", msg, stack)
+            | TransactionError(msg, stack) -> ("TransactionError", msg, stack)
+            | RequestError(msg, stack) -> ("RequestError", msg, stack)
+            | ApplicationError(msg, stack) -> ("RequestError", msg, stack)
+            | GenericError(errorType, msg, stack) -> (errorType, msg, stack)

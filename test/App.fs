@@ -102,7 +102,7 @@ let sqlClientTests =
                    defaultConfig
                    |> Sql.connect
                    |> Sql.query "SELECT @date"
-                   |> Sql.paramters [ SqlParam.From("@date", DateTime.Now) ]
+                   |> Sql.parameters [ SqlParam.From("@date", DateTime.Now) ]
                    |> Sql.readScalar
 
                 match value with 
@@ -119,7 +119,7 @@ let sqlClientTests =
                    defaultConfig
                    |> Sql.connect
                    |> Sql.query "SELECT @value"
-                   |> Sql.paramters [ SqlParam.From("@value", true) ]
+                   |> Sql.parameters [ SqlParam.From("@value", true) ]
                    |> Sql.readScalar
 
                 match value with 
@@ -159,6 +159,76 @@ let sqlClientTests =
                 | other ->  failwith "Unexpected results"
             }
 
+        testCaseAsync "Sql.readScalar works with tinyint" <| fun () -> 
+            async {
+                let! value = 
+                    defaultConfig
+                    |> Sql.connect 
+                    |> Sql.query "SELECT CAST(42 as tinyint)"
+                    |> Sql.readScalar 
+                
+                match value with 
+                | Ok (SqlValue.TinyInt value) -> areEqual 42 (int value)
+                | other ->  failwith "Unexpected results"
+            }
+
+        testCaseAsync "Sql.readScalar works with smallint" <| fun () -> 
+            async {
+                let! value = 
+                    defaultConfig
+                    |> Sql.connect 
+                    |> Sql.query "SELECT CAST(42 as smallint)"
+                    |> Sql.readScalar 
+                
+                match value with 
+                | Ok (SqlValue.SmallInt value) -> areEqual 42 (int value)
+                | other ->  failwith "Unexpected results"
+            }
+
+        testCaseAsync "Sql.readScalar: integer roundtrips" <| fun () -> 
+            async {
+                let queryConfig = 
+                    defaultConfig
+                    |> Sql.connect 
+                    |> Sql.query "SELECT @value"
+                   
+                let! integer32 = 
+                    queryConfig
+                    |> Sql.parameters [ SqlParam.From("@value", 42) ]
+                    |> Sql.readScalar
+
+                let! tinyInt = 
+                    queryConfig
+                    |> Sql.parameters [ SqlParam.From("@value", (uint8 42)) ]
+                    |> Sql.readScalar 
+
+                let! smallInt = 
+                    queryConfig
+                    |> Sql.parameters [ SqlParam.From("@value", (int16 42)) ]
+                    |> Sql.readScalar
+                
+                let! bigInteger = 
+                    queryConfig
+                    |> Sql.parameters [ SqlParam.From("@value", 42L) ]
+                    |> Sql.readScalar
+
+                match integer32 with 
+                | Ok (SqlValue.Int value) -> areEqual 42 value
+                | other ->  failwith "Unexpected results when reading int32"
+
+                match tinyInt with 
+                | Ok (SqlValue.TinyInt value) -> areEqual 42 (int value)
+                | other ->  failwith "Unexpected results when reading tinyint"
+
+                match smallInt with 
+                | Ok (SqlValue.SmallInt value) -> areEqual 42 (int value)
+                | other ->  failwith "Unexpected results when reading smallint"
+
+                match bigInteger with  
+                | Ok (SqlValue.BigInt value) -> areEqual 42L value 
+                | other ->  failwith "Unexpected results when reading bigint"
+            }
+
         testCaseAsync "Sql.readJson works" <| fun () ->
             async {
                 let! jsonResult = 
@@ -193,13 +263,41 @@ let sqlClientTests =
                 | otherwise -> failwith ("Unexpected result:\n" + Json.stringify otherwise)
             }
 
+        testCaseAsync "Executing stored procedure works" <| fun () ->
+            async {
+                let! answer = 
+                    defaultConfig
+                    |> Sql.connect
+                    |> Sql.storedProcedure "sp_executesql"
+                    |> Sql.parameters [ SqlParam.From("@stmt", "SELECT 42") ]
+                    |> Sql.readScalar
+
+                match answer with  
+                | Ok (SqlValue.Int 42) -> pass()
+                | otherwise -> failwithf "Unexpected error: %s" (Json.stringify otherwise)
+            }
+
+        testCaseAsync "Executing stored procedure as named scalar" <| fun () ->
+            async {
+                let! answer = 
+                    defaultConfig
+                    |> Sql.connect
+                    |> Sql.storedProcedure "sp_executesql"
+                    |> Sql.parameters [ SqlParam.From("@stmt", "SELECT 42 as [ANSWER]") ]
+                    |> Sql.readScalar
+
+                match answer with  
+                | Ok (SqlValue.Int 42) -> pass()
+                | otherwise -> failwithf "Unexpected error: %s" (Json.stringify otherwise)
+            }
+ 
         testCaseAsync "Sql.readRows works with parameterized queries" <| fun () -> 
             async {
                 let! values = 
                     defaultConfig
                     |> Sql.connect 
                     |> Sql.query "SELECT id, name FROM (VALUES (@id, @name)) AS Awesome(id, name)"
-                    |> Sql.paramters [ SqlParam.From("@id", 42); SqlParam.From("@name", "Fable.SqlClient") ]
+                    |> Sql.parameters [ SqlParam.From("@id", 42); SqlParam.From("@name", "Fable.SqlClient") ]
                     |> Sql.readRows (fun row -> 
                         option {
                             let! id = Sql.readInt "id" row
@@ -219,7 +317,7 @@ let sqlClientTests =
                     defaultConfig
                     |> Sql.connect
                     |> Sql.query "SELECT id, name, guid FROM (VALUES (@id, @name, @guid)) AS Awesome(id, name, guid) FOR JSON PATH"
-                    |> Sql.paramters [
+                    |> Sql.parameters [
                         SqlParam.From("@id", 42)
                         SqlParam.From("@name", "Fable")
                         SqlParam.From("@guid", inputGuid) ]

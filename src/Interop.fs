@@ -9,6 +9,7 @@ type private ISqlType = ISqlType
 
 type private ISqlRequest = 
     abstract query : string -> (SqlError -> obj -> unit) -> unit
+    abstract execute : string -> (SqlError -> obj -> unit) -> unit
     abstract rowsAffected : int 
     abstract multiple : bool with get, set
     abstract stream : bool with set, get

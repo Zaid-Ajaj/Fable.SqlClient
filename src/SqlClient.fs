@@ -13,17 +13,23 @@ module Sql =
     let private get<'a> (prop: string) (literal: obj) : 'a = jsNative
 
     let private defaultProps : ISqlProps = 
-        { Config = []; Query = None; Parameters = [ ] }
+        { Config = []; 
+          Query = None; 
+          Parameters = [ ]
+          StoredProcedure = false }
 
     let connect (initialConfig: SqlConfig list) = 
         { defaultProps with Config = initialConfig }
 
     let query (query: string) (config: ISqlProps) = 
-        { config with Query = Some query }
+        { config with Query = Some query; StoredProcedure = false }
 
-    let paramters (values: SqlParam list) (config: ISqlProps) = 
+    let parameters (values: SqlParam list) (config: ISqlProps) = 
         { config with Parameters = values }
     
+    let storedProcedure (name: string) (config: ISqlProps) = 
+        { config with Query = Some name; StoredProcedure = true }
+
     let private createPool (config: SqlConfig) : ISqlConnectionPool = import "createConnectionPool" "./createPool.js"
     
     let private applicationError (ex: exn) : NativeSqlError = 
@@ -59,6 +65,14 @@ module Sql =
     let private rawQuery (query: string) (req: ISqlRequest) : Async<Result<obj, SqlError>> = 
         Async.FromContinuations <| fun (resolve, reject, _) ->
             req.query query (fun err results -> 
+                if isNull (box err) 
+                then resolve (Ok results)
+                else resolve (Error (toSqlError (unbox err)))
+            )
+
+    let private rawProc (procedureName: string) (req: ISqlRequest) : Async<Result<obj, SqlError>> = 
+        Async.FromContinuations <| fun (resolve, reject, _) ->
+            req.execute procedureName (fun err results -> 
                 if isNull (box err) 
                 then resolve (Ok results)
                 else resolve (Error (toSqlError (unbox err)))
@@ -109,11 +123,12 @@ module Sql =
                 else name 
             match sqlType with 
             | SqlType.Int -> request.input sanitizedName  mssql.Int value  
+            | SqlType.TinyInt -> request.input sanitizedName mssql.TinyInt value
             | SqlType.SmallInt -> request.input sanitizedName mssql.SmallInt value 
             | SqlType.BigInt -> request.input sanitizedName mssql.BigInt (string (unbox<int64> value)) 
             | SqlType.Float -> request.input sanitizedName mssql.Float value 
             | SqlType.Bit -> request.input sanitizedName mssql.Bit value 
-            | SqlType.NVarChar -> request.input sanitizedName (mssql.VarChar(mssql.MAX)) value 
+            | SqlType.NVarChar -> request.input sanitizedName (mssql.NVarChar(mssql.MAX)) value 
             | SqlType.DateTime -> request.input sanitizedName mssql.DateTime value
             | SqlType.UniqueIdentifier -> 
                 let value = unbox<Guid> value 
@@ -139,7 +154,10 @@ module Sql =
                 let queryRequest = request connection
                 populateParameters queryRequest config.Parameters
                 let sqlQuery = defaultArg config.Query ""
-                let! results = rawQuery sqlQuery queryRequest
+                let! results = 
+                    if config.StoredProcedure
+                    then rawProc sqlQuery queryRequest
+                    else rawQuery sqlQuery queryRequest
                 match results with 
                 | Error requestErr -> 
                     connection.close()
@@ -190,7 +208,10 @@ module Sql =
                 let queryRequest = request connection
                 populateParameters queryRequest config.Parameters
                 let sqlQuery = defaultArg config.Query ""
-                let! results = rawQuery sqlQuery queryRequest
+                let! results = 
+                    if config.StoredProcedure
+                    then rawProc sqlQuery queryRequest
+                    else rawQuery sqlQuery queryRequest
                 match results with 
                 | Error requestErr -> 
                     connection.close()
@@ -199,7 +220,9 @@ module Sql =
                     try 
                         let metadata = columnDefinitions resultset
                         let scalarType = metadata |> Array.map snd |> Array.item 0 
-                        let value : obj = get "" (Array.item 0 (get "recordset" resultset))
+                        let theOnlyRecord = Array.item 0 (get "recordset" resultset)
+                        let recordKeys = Fable.Core.JS.Object.keys theOnlyRecord
+                        let value : obj = get recordKeys.[0] theOnlyRecord
                         let parsedValue = 
                             match scalarType with 
                             | SqlType.Float -> SqlValue.Number (unbox value)
@@ -233,7 +256,10 @@ module Sql =
                 let queryRequest = request connection
                 populateParameters queryRequest config.Parameters
                 let sqlQuery = defaultArg config.Query ""
-                let! results = rawQuery sqlQuery queryRequest
+                let! results = 
+                    if config.StoredProcedure
+                    then rawProc sqlQuery queryRequest
+                    else rawQuery sqlQuery queryRequest
                 match results with 
                 | Error requestErr -> 
                     connection.close()
