@@ -17,12 +17,10 @@ install:
   # Get the latest stable version of Node.js
   - ps: Install-Product node $env:nodejs_version
   - cmd: npm install
-  - cmd: npm run build
 
 os: Visual Studio 2017
 
 build_script:
-  - cmd: build.cmd BuildRunAllTests
-  - cmd: build.cmd IntegrationTestsV2
+  - cmd: npm run build
 
 test: off
