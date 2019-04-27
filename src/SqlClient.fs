@@ -114,37 +114,40 @@ module Sql =
         | Some (_, SqlValue.Number value) -> Some value  
         | _ -> None 
 
-    let private populateParameters (request: ISqlRequest) (parameters: SqlParam list) : unit = 
-        for paramter in parameters do 
-            let (name, value, sqlType) : (string * obj * SqlType) = unbox paramter
-            let sanitizedName = 
-                if name.StartsWith "@"
-                then name.[1..]
-                else name 
-            match sqlType with 
-            | SqlType.Int -> request.input sanitizedName  mssql.Int value  
-            | SqlType.TinyInt -> request.input sanitizedName mssql.TinyInt value
-            | SqlType.SmallInt -> request.input sanitizedName mssql.SmallInt value 
-            | SqlType.BigInt -> request.input sanitizedName mssql.BigInt (string (unbox<int64> value)) 
-            | SqlType.Float -> request.input sanitizedName mssql.Float value 
-            | SqlType.Bit -> request.input sanitizedName mssql.Bit value 
-            | SqlType.NVarChar -> request.input sanitizedName (mssql.NVarChar(mssql.MAX)) value 
-            | SqlType.DateTime -> request.input sanitizedName mssql.DateTime value
-            | SqlType.UniqueIdentifier -> 
-                let value = unbox<Guid> value 
-                let serialized = value.ToString()
-                request.input sanitizedName (mssql.UniqueIdentifier) serialized
-            | SqlType.DateTimeOffset -> 
-                let value = unbox<DateTimeOffset> value
-                let serialzied = value.ToString("o")
-                request.input sanitizedName (mssql.DateTimeOffset(7)) serialzied
-            | SqlType.Decimal -> 
-                let value = unbox<decimal> value 
-                let serialized = value.ToString()
-                request.input sanitizedName (mssql.Decimal 18 10) serialized
+    let private populateParameters (request: ISqlRequest) (parameters: SqlParam list) onError : unit = 
+        try 
+            for paramter in parameters do 
+                let (name, value, sqlType) : (string * obj * SqlType) = unbox paramter
+                let sanitizedName = 
+                    if name.StartsWith "@"
+                    then name.[1..]
+                    else name 
+                match sqlType with 
+                | SqlType.Int -> request.input sanitizedName  mssql.Int value  
+                | SqlType.TinyInt -> request.input sanitizedName mssql.TinyInt value
+                | SqlType.SmallInt -> request.input sanitizedName mssql.SmallInt value 
+                | SqlType.BigInt -> request.input sanitizedName mssql.BigInt (string (unbox<int64> value)) 
+                | SqlType.Float -> request.input sanitizedName mssql.Float value 
+                | SqlType.Bit -> request.input sanitizedName mssql.Bit value 
+                | SqlType.NVarChar -> request.input sanitizedName (mssql.NVarChar(mssql.MAX)) value 
+                | SqlType.DateTime -> request.input sanitizedName mssql.DateTime value
+                | SqlType.UniqueIdentifier -> 
+                    let value = unbox<Guid> value 
+                    let serialized = value.ToString()
+                    request.input sanitizedName (mssql.UniqueIdentifier) serialized
+                | SqlType.DateTimeOffset -> 
+                    let value = unbox<DateTimeOffset> value
+                    let serialzied = value.ToString("o")
+                    request.input sanitizedName (mssql.DateTimeOffset(7)) serialzied
+                | SqlType.Decimal -> 
+                    let value = unbox<decimal> value 
+                    let serialized = value.ToString()
+                    request.input sanitizedName (mssql.Decimal 18 10) serialized
 
-            | _ -> failwithf "Using parameter '%s' of type '%s' is not supported" name (unbox sqlType)
-        
+                | _ -> failwithf "Using parameter '%s' of type '%s' is not supported" name (unbox sqlType)
+        with 
+        | ex -> onError() 
+
     let readRows<'t> (map: (string * SqlValue) list -> Option<'t>) (config: ISqlProps) : Async<Result<'t list, SqlError>> = 
         async {
             let! connectionResult = connectToPool config.Config
@@ -152,7 +155,7 @@ module Sql =
             | Error connectionError -> return Error connectionError  
             | Ok connection ->
                 let queryRequest = request connection
-                populateParameters queryRequest config.Parameters
+                populateParameters queryRequest config.Parameters (fun () -> connection.close())
                 let sqlQuery = defaultArg config.Query ""
                 let! results = 
                     if config.StoredProcedure
@@ -206,7 +209,7 @@ module Sql =
             | Error err -> return Error err 
             | Ok connection ->
                 let queryRequest = request connection
-                populateParameters queryRequest config.Parameters
+                populateParameters queryRequest config.Parameters (fun () -> connection.close())
                 let sqlQuery = defaultArg config.Query ""
                 let! results = 
                     if config.StoredProcedure
@@ -254,7 +257,7 @@ module Sql =
             | Error err -> return Error err 
             | Ok connection ->
                 let queryRequest = request connection
-                populateParameters queryRequest config.Parameters
+                populateParameters queryRequest config.Parameters (fun () -> connection.close())
                 let sqlQuery = defaultArg config.Query ""
                 let! results = 
                     if config.StoredProcedure

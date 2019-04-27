@@ -96,6 +96,22 @@ let sqlClientTests =
                 | other -> failwith "Unexpected results"
             }
 
+        testCaseAsync "Sql.readScalar works with named DateTime" <| fun () -> 
+            async {
+                let! value = 
+                    defaultConfig
+                    |> Sql.connect 
+                    |> Sql.query "SELECT GETDATE() as [Now]"
+                    |> Sql.readScalar 
+                
+                match value with 
+                | Ok (SqlValue.Date now) -> 
+                    let yesterday = DateTime.Now.AddDays(-1.0)
+                    isTrue (now > yesterday)
+
+                | other -> failwith "Unexpected results"
+            }
+
         testCaseAsync "Sql.readScalar with parameterized query: DateTime roundtrip" <| fun () ->
             async {
                 let! value =
@@ -110,6 +126,50 @@ let sqlClientTests =
                     let yesterday = DateTime.Now.AddDays(-1.0) 
                     isTrue (now > yesterday)
 
+                | otherwise -> return! failwithf "Unexpected results:\n%s" (Json.stringify otherwise)
+            }
+
+        testCaseAsync "Sql.readScalar with parameterized query: string roundtrip" <| fun () ->
+            async {
+                let! value =
+                   defaultConfig
+                   |> Sql.connect
+                   |> Sql.query "SELECT @value"
+                   |> Sql.parameters [ SqlParam.From("@value", "F# & Fable") ]
+                   |> Sql.readScalar
+
+                match value with 
+                | Ok (SqlValue.String "F# & Fable") -> pass()
+                | otherwise -> return! failwithf "Unexpected results:\n%s" (Json.stringify otherwise)
+            }
+
+        testCaseAsync "Sql.readScalar with parameterized query: decimal roundtrip" <| fun () ->
+            async {
+                let! value =
+                   defaultConfig
+                   |> Sql.connect
+                   |> Sql.query "SELECT @value"
+                   |> Sql.parameters [ SqlParam.From("@value", 15.0M) ]
+                   |> Sql.readScalar
+
+                match value with 
+                | Ok (SqlValue.Decimal 15.0M) -> pass()
+                | otherwise -> return! failwithf "Unexpected results:\n%s" (Json.stringify otherwise)
+            }
+
+        testCaseAsync "Sql.readScalar with parameterized query: Guid roundtrip" <| fun () ->
+            async {
+                let input = Guid.NewGuid()
+
+                let! value =
+                   defaultConfig
+                   |> Sql.connect
+                   |> Sql.query "SELECT @value"
+                   |> Sql.parameters [ SqlParam.From("@value", input) ]
+                   |> Sql.readScalar
+
+                match value with 
+                | Ok (SqlValue.UniqueIdentifier output) -> areEqual input output
                 | otherwise -> return! failwithf "Unexpected results:\n%s" (Json.stringify otherwise)
             }
 
