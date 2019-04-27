@@ -51,6 +51,7 @@ type SqlType =
     | [<CompiledName("Number")>] Number 
     | [<CompiledName("Bit")>] Bit
     | [<CompiledName("Money")>] Money 
+    | [<CompiledName "VarBinary">] VarBinary
 
 type SqlValue = 
     | TinyInt of uint8
@@ -63,6 +64,8 @@ type SqlValue =
     | Decimal of decimal  
     | String of string 
     | Number of float 
+    | Binary of byte[]
+    | Null
 
 type SqlParam() = 
     static member inline From(name: string, value: int) = 
@@ -85,6 +88,10 @@ type SqlParam() =
         unbox<SqlParam> (name, value, SqlType.UniqueIdentifier)
     static member inline From(name: string, value: DateTimeOffset) = 
         unbox<SqlParam> (name, value, SqlType.DateTimeOffset)
+    static member inline From(name: string, value: byte[]) = 
+        unbox<SqlParam> (name, value, SqlType.VarBinary)
+    static member inline Null(name: string) = 
+        unbox<SqlParam> (name, null, "NullType")
 
 type ISqlProps = {
     Config: SqlConfig list

@@ -7,6 +7,8 @@ open Fable.Core.JsInterop
 open Fable.SimpleJson
 open Fable.SqlClient
 open Fable.SqlClient.OptionWorkflow
+open Fable.SqlClient
+open Fable.SqlClient
 
 let environmentVariables() : (string * string) [] = import "envVars" "./util.js" 
 
@@ -48,7 +50,7 @@ let defaultConfig =
       SqlConfig.Server (getVar "SQLCLIENT_SERVER")
       SqlConfig.User (getVar "SQLCLIENT_USER")
       SqlConfig.Password (getVar "SQLCLIENT_PASSWORD") 
-      SqlConfig.ConnectionTimeout 5000 ]
+      SqlConfig.ConnectionTimeout 15000 ]
 
 Fable.Core.JS.console.log(keyValueList CaseRules.LowerFirst defaultConfig)
 
@@ -100,6 +102,21 @@ let sqlClientTests =
                 | otherwise -> failTest (sprintf "Unexpected result: %s" (Json.stringify otherwise))
             }
 
+        testCaseAsync "Sql.readScalar: byte[] round trip" <| fun () ->
+            async {
+                let input = [| byte 1; byte 2; byte 3 |]
+                let! output = 
+                    defaultConfig
+                    |> Sql.connect 
+                    |> Sql.query "SELECT @bytes"
+                    |> Sql.parameters [ SqlParam.From("@bytes", input) ]
+                    |> Sql.readScalar 
+                
+                match output with 
+                | Ok (SqlValue.Binary output) -> areEqual output input
+                | otherwise -> failTest (sprintf "Unexpected result: %s" (Json.stringify otherwise))
+            }
+        
         testCaseAsync "Sql.readScalar works with DateTime" <| fun () -> 
             async {
                 let! value = 
@@ -222,8 +239,8 @@ let sqlClientTests =
                     |> String.IsNullOrWhiteSpace
                     |> isFalse
 
-                | other -> 
-                    failwith "Unexpected results"
+                | other -> failwithf "Unexpected results %s" (Json.stringify other)
+                    
             }
 
         testCaseAsync "Sql.readScalar works with bigint" <| fun () -> 
@@ -236,7 +253,7 @@ let sqlClientTests =
                 
                 match value with 
                 | Ok (SqlValue.BigInt value) -> areEqual 42L value
-                | other ->  failwith "Unexpected results"
+                | other ->  failwithf "Unexpected results %s" (Json.stringify other)
             }
 
         testCaseAsync "Sql.readScalar works with tinyint" <| fun () -> 
@@ -249,7 +266,7 @@ let sqlClientTests =
                 
                 match value with 
                 | Ok (SqlValue.TinyInt value) -> areEqual 42 (int value)
-                | other ->  failwith "Unexpected results"
+                | other -> failwithf "Unexpected results %s" (Json.stringify other)
             }
 
         testCaseAsync "Sql.readScalar works with smallint" <| fun () -> 
@@ -343,6 +360,19 @@ let sqlClientTests =
                 | otherwise -> failwith ("Unexpected result:\n" + Json.stringify otherwise)
             }
 
+        testCaseAsync "Sql.readAffectedRows works" <| fun () -> 
+            async {
+                let! rowCount = 
+                    defaultConfig
+                    |> Sql.connect 
+                    |> Sql.query "SELECT id, name FROM (VALUES (42, 'Fable'), (31415, 'F#')) AS Awesome(id, name)"
+                    |> Sql.readAffectedRows 
+
+                match rowCount with 
+                | Ok 2 -> pass()
+                | otherwise -> failwithf "Unpexpected results: %s" (Json.stringify otherwise)
+            }
+
         testCaseAsync "Executing stored procedure works" <| fun () ->
             async {
                 let! answer = 
@@ -369,6 +399,69 @@ let sqlClientTests =
                 match answer with  
                 | Ok (SqlValue.Int 42) -> pass()
                 | otherwise -> failwithf "Unexpected error: %s" (Json.stringify otherwise)
+            }
+
+        testCaseAsync "Sql.readRows properly handles null values" <| fun () ->
+            async {
+                let! results =  
+                    defaultConfig
+                    |> Sql.connect 
+                    |> Sql.query "SELECT id, name FROM (VALUES (42, 'Fable'), (NULL, 'F#')) AS Awesome(id, name)"
+                    |> Sql.readRows (fun row ->
+                        option {
+                            let! id = Sql.readInt "id" row 
+                            let! name = Sql.readString "name" row
+                            return (id, name)
+                        })
+                
+                match results with 
+                | Ok [ (42, "Fable") ] -> pass() 
+                | other -> failwithf "Unexpected errror: %s" (Json.stringify other)
+            }
+
+        testCaseAsync "SqlValue.Null can be used a parameter" <| fun () ->
+            async {
+                let! value = 
+                    defaultConfig
+                    |> Sql.connect
+                    |> Sql.query "SELECT @value"
+                    |> Sql.parameters [ SqlParam.Null("value") ]
+                    |> Sql.readScalar 
+                
+                match value with 
+                | Ok SqlValue.Null -> pass()
+                | other -> failwithf "Unexpected errror: %s" (Json.stringify other)
+            }
+
+        testCaseAsync "Sql.readRows can use default values for null values" <| fun () ->
+            async {
+                let! results =  
+                    defaultConfig
+                    |> Sql.connect 
+                    |> Sql.query "SELECT id, name FROM (VALUES (42, 'Fable'), (31415, NULL)) AS Awesome(id, name)"
+                    |> Sql.readRows (fun row ->
+                        option {
+                            let! id = Sql.readInt "id" row 
+                            let name = Sql.readString "name" row
+                            return (id, defaultArg name "F#")
+                        })
+                
+                match results with 
+                | Ok [ (42, "Fable"); (31415, "F#") ] -> pass() 
+                | other -> failwithf "Unexpected errror: %s" (Json.stringify other)
+            }
+
+        testCaseAsync "Sql.readScalar properly handles NULL values" <| fun () ->
+            async {
+                let! value = 
+                    defaultConfig
+                    |> Sql.connect
+                    |> Sql.query "SELECT NULL"
+                    |> Sql.readScalar 
+                
+                match value with 
+                | Ok SqlValue.Null -> pass() 
+                | other -> failwithf "Unexpected errror: %s" (Json.stringify other)
             }
  
         testCaseAsync "Sql.readRows works with parameterized queries" <| fun () -> 

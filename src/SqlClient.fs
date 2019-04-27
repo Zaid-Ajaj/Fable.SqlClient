@@ -4,6 +4,7 @@ open System
 open Fable.Core
 open Fable.Core.JsInterop
 
+[<RequireQualifiedAccess>]
 module Sql = 
 
     [<Import("*", "mssql")>] 
@@ -114,6 +115,9 @@ module Sql =
         | Some (_, SqlValue.Number value) -> Some value  
         | _ -> None 
 
+    [<Emit("Buffer.from($0)")>]
+    let private bufferFromBytes (bytes: byte[]) : obj = jsNative
+
     let private populateParameters (request: ISqlRequest) (parameters: SqlParam list) onError : unit = 
         try 
             for paramter in parameters do 
@@ -122,6 +126,7 @@ module Sql =
                     if name.StartsWith "@"
                     then name.[1..]
                     else name 
+
                 match sqlType with 
                 | SqlType.Int -> request.input sanitizedName  mssql.Int value  
                 | SqlType.TinyInt -> request.input sanitizedName mssql.TinyInt value
@@ -131,6 +136,7 @@ module Sql =
                 | SqlType.Bit -> request.input sanitizedName mssql.Bit value 
                 | SqlType.NVarChar -> request.input sanitizedName (mssql.NVarChar(mssql.MAX)) value 
                 | SqlType.DateTime -> request.input sanitizedName mssql.DateTime value
+                | SqlType.VarBinary -> request.input sanitizedName (mssql.VarBinary(mssql.MAX)) (bufferFromBytes (unbox value))
                 | SqlType.UniqueIdentifier -> 
                     let value = unbox<Guid> value 
                     let serialized = value.ToString()
@@ -142,7 +148,9 @@ module Sql =
                 | SqlType.Decimal -> 
                     let value = unbox<decimal> value 
                     let serialized = value.ToString()
-                    request.input sanitizedName (mssql.Decimal 18 10) serialized
+                    request.input sanitizedName (mssql.Decimal 18 10) serialized    
+                
+                | other when unbox other = "NullType" -> request?input(name, null)
 
                 | _ -> failwithf "Using parameter '%s' of type '%s' is not supported" name (unbox sqlType)
         with 
@@ -173,6 +181,9 @@ module Sql =
                         for row in recordset do 
                             let rowValues = ResizeArray<string * SqlValue>()
                             for (columnName, columnType) in metadata do
+                                if isNull (get columnName row) 
+                                then rowValues.Add(columnName, SqlValue.Null) 
+                                else 
                                 match columnType with 
                                 | SqlType.Float -> rowValues.Add(columnName, SqlValue.Number (unbox (get columnName row)))
                                 | SqlType.TinyInt -> rowValues.Add(columnName, SqlValue.TinyInt (unbox (get columnName row)))
@@ -185,6 +196,7 @@ module Sql =
                                 | SqlType.Money -> rowValues.Add(columnName, SqlValue.Decimal (decimal (get columnName row)))
                                 | SqlType.BigInt -> rowValues.Add(columnName, SqlValue.BigInt (int64 (get<string> columnName row)))
                                 | SqlType.Bit -> rowValues.Add(columnName, SqlValue.Bool (get columnName row))
+                                | SqlType.VarBinary -> rowValues.Add(columnName, SqlValue.Binary(unbox (get columnName row)))
                                 | SqlType.DateTimeOffset -> rowValues.Add(columnName, SqlValue.Date (unbox (get columnName row)))
                                 | SqlType.UniqueIdentifier -> rowValues.Add(columnName, SqlValue.UniqueIdentifier (Guid.Parse(get<string> columnName row)))
                             match map (List.ofSeq rowValues) with  
@@ -201,6 +213,27 @@ module Sql =
         }
     
 
+    let readAffectedRows (config: ISqlProps) : Async<Result<int, SqlError>> = 
+        async {
+            let! connectionResult = connectToPool config.Config
+            match connectionResult with 
+            | Error err -> return Error err 
+            | Ok connection ->
+                let queryRequest = request connection
+                populateParameters queryRequest config.Parameters (fun () -> connection.close())
+                let sqlQuery = defaultArg config.Query ""
+                let! results = 
+                    if config.StoredProcedure
+                    then rawProc sqlQuery queryRequest
+                    else rawQuery sqlQuery queryRequest
+                match results with 
+                | Error requestErr -> 
+                    connection.close()
+                    return Error requestErr 
+                | Ok resultset ->
+                    connection.close()
+                    return Ok (Array.item 0 (get<int array> "rowsAffected" resultset))
+        }                            
 
     let readScalar (config: ISqlProps) : Async<Result<SqlValue, SqlError>> = 
         async {
@@ -227,6 +260,9 @@ module Sql =
                         let recordKeys = Fable.Core.JS.Object.keys theOnlyRecord
                         let value : obj = get recordKeys.[0] theOnlyRecord
                         let parsedValue = 
+                            if isNull value 
+                            then SqlValue.Null
+                            else
                             match scalarType with 
                             | SqlType.Float -> SqlValue.Number (unbox value)
                             | SqlType.TinyInt -> SqlValue.TinyInt (unbox value) 
@@ -240,6 +276,7 @@ module Sql =
                             | SqlType.Money -> SqlValue.Decimal (decimal (unbox<float> value))
                             | SqlType.UniqueIdentifier -> SqlValue.UniqueIdentifier (Guid.Parse (unbox<string> value))
                             | SqlType.Bit -> SqlValue.Bool (unbox value)
+                            | SqlType.VarBinary -> SqlValue.Binary (unbox value)
                             | (SqlType.NVarChar | SqlType.VarChar) -> SqlValue.String (unbox value)
 
                         connection.close()
