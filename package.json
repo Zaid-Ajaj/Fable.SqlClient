@@ -1,7 +1,7 @@
 {
   "private": true,
   "scripts": {
-    "build": "fable build.fsx --run",
+    "build": "fable-splitter test -o build/tests --commonjs",
     "pretest": "fable-splitter test -o build/tests --commonjs",
     "test": "mocha build/tests -t 60000"
   },

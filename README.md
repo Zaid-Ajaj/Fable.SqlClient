@@ -1,4 +1,4 @@
-# Fable.SqlClient [![Nuget](https://img.shields.io/nuget/v/Fable.SqlClient.svg?colorB=green)](https://www.nuget.org/packages/Fable.SqlClient)
+# Fable.SqlClient [![Nuget](https://img.shields.io/nuget/v/Fable.SqlClient.svg?colorB=green)](https://www.nuget.org/packages/Fable.SqlClient) [![Build status](https://ci.appveyor.com/api/projects/status/n7665851i24yh2d7?svg=true)](https://ci.appveyor.com/project/Zaid-Ajaj/fable-sqlclient)
 
 
 [Fable](https://github.com/fable-compiler/Fable) binding for [node-mssql](https://github.com/tediousjs/node-mssql), Microsoft SQL Server client library with an idiomatic F# API to be used from Fable Node applications. 
@@ -7,6 +7,8 @@
 Install the Fable binding from Nuget
 ```
 paket add Fable.SqlClient --project /path/to/project.fsproj
+
+dotnet add package Fable.SqlClient
 ```
 Install the actual node-mssql from Npm
 ```
@@ -21,21 +23,10 @@ let connectionConfig =
     [ SqlConfig.User "admin"
       SqlConfig.Password "str0ngPa$$word"
       SqlConfig.Host "localhost"
-      SqlConfog.Port 1433
-      SqlConfig.Database "AdventuresWorks" ]
+      SqlConfig.Database "AdventuresWorks"
+      SqlConfog.Port 1433 ]
 ```
 
-When we execute queries, the result sets we get back from the native client is a simple object literal, so we can simply model a row of the result as a (pojo) record:
-
-```fs
-[<Pojo>]
-type User = 
-  { Id: int
-    Name: string
-    DateModified: Option<DateTime> }
-```
-
-Nullable columns can be naturally represented as values of type `Option<'t>` because `null` values of the object litetal that we get back correspond to `None` and otherwise it will be `Some value`.
 
 ## SqlClient.query<'t>
 Now let us query some values:

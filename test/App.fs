@@ -52,6 +52,10 @@ let defaultConfig =
 
 Fable.Core.JS.console.log(keyValueList CaseRules.LowerFirst defaultConfig)
 
+module ByteArray =
+    [<Emit("Buffer.from($0).toString('utf8')")>]
+    let decodeUtf8 (bytes: byte[]) : string = jsNative
+    
 let sqlClientTests = 
     testList "Fable.SqlClient" [
         testCaseAsync "Sql.readRows works with primitive types" <| fun () ->
@@ -79,6 +83,22 @@ let sqlClientTests =
                     failTest (Json.stringify otherwise)
             }
 
+        testCaseAsync "(Ab)use Sql.readJson to read binary" <| fun () ->
+            async {
+                let! json = 
+                    defaultConfig
+                    |> Sql.connect 
+                    |> Sql.query "SELECT 0x5468697320697320612074657374 as [Binary] FOR JSON PATH"
+                    |> Sql.readJson 
+                
+                match json with 
+                | Ok serialized ->
+                    let deserialized = Json.parseAs<{| Binary: byte[] |} array> serialized 
+                    let text = ByteArray.decodeUtf8 deserialized.[0].Binary
+                    areEqual "This is a test" text 
+
+                | otherwise -> failTest (sprintf "Unexpected result: %s" (Json.stringify otherwise))
+            }
 
         testCaseAsync "Sql.readScalar works with DateTime" <| fun () -> 
             async {
@@ -357,7 +377,9 @@ let sqlClientTests =
                     defaultConfig
                     |> Sql.connect 
                     |> Sql.query "SELECT id, name FROM (VALUES (@id, @name)) AS Awesome(id, name)"
-                    |> Sql.parameters [ SqlParam.From("@id", 42); SqlParam.From("@name", "Fable.SqlClient") ]
+                    |> Sql.parameters 
+                        [ SqlParam.From("@id", 42)
+                          SqlParam.From("@name", "Fable.SqlClient") ]
                     |> Sql.readRows (fun row -> 
                         option {
                             let! id = Sql.readInt "id" row
