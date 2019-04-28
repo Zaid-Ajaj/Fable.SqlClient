@@ -11,7 +11,7 @@ module private Helpers =
     let path: obj = importAll "path"
     let fs: obj = importAll "fs"
     let childProcess: obj = importAll "child_process"
-    let [<Global("process")>] nodeProcess = obj()
+    let nodeProcess : obj = importAll "process"
 
     let inline (!>) x = ignore x
     let inline (~%) xs = createObj xs |> unbox
@@ -56,7 +56,7 @@ module private Helpers =
 open Helpers
 
 let (</>) (p1: string) (p2: string): string =
-    path?join.Invoke(p1, p2)
+    path?join(p1, p2)
 
 let args: string list =
     nodeProcess?argv
@@ -94,7 +94,9 @@ let rec removeDirRecursive (p: string): unit =
             if isDirectory curPath then
                 removeDirRecursive curPath
             else
+                printfn "Deleting file: %s" curPath
                 fs?unlinkSync(curPath)
+        printfn "Deleting directory: %s" p
         fs?rmdirSync(p)
 
 let writeFile (filePath: string) (txt: string): unit =
@@ -114,9 +116,9 @@ let readLines (filePath: string): IObservable<string> =
         "crlfDelay" ==> System.Double.PositiveInfinity
     ]
     let obs = SingleObservable(fun () -> rl?close())
-    rl?on.Invoke("line", fun line ->
+    rl?on("line", fun line ->
         obs.Trigger(line))
-    rl?on.Invoke("close", fun _line ->
+    rl?on("close", fun _line ->
         obs.Dispose())
     obs :> _
 
@@ -141,7 +143,7 @@ let takeLinesWhile (predicate: string->bool) (filePath: string) = async {
 }
 let run cmd: unit =
     printfn "> %s" cmd
-    childProcess?execSync.Invoke(cmd, %[
+    childProcess?execSync(cmd, %[
         "stdio" ==> "inherit"
     ])
 
@@ -255,6 +257,20 @@ module private Publish =
 let pushNuget projFile =
     Publish.pushNuget projFile
 
-match args with
-| IgnoreCase "publish" :: _ -> pushNuget "src/Fable.SqlClient.fsproj"
-| _ -> ()
+printfn "Args: %s" (String.concat ", " args)
+
+let executeTarget = function 
+    | IgnoreCase "publish" -> 
+        pushNuget "src/Fable.SqlClient.fsproj"
+    
+    | IgnoreCase "clean" -> 
+        removeDirRecursive "src/temp"
+        removeDirRecursive "src/bin"
+        removeDirRecursive "src/obj"
+        removeDirRecursive "test/bin"
+        removeDirRecursive "test/obj"
+        removeDirRecursive "temp"
+    | _ -> 
+        ignore() 
+
+args |> List.iter executeTarget

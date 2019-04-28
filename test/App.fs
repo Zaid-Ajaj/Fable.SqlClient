@@ -17,11 +17,6 @@ let exit() = jsNative
 let requiredVariables = [ "SQLCLIENT_DATABASE"; "SQLCLIENT_USER"; "SQLCLIENT_PASSWORD"; "SQLCLIENT_SERVER" ]
 let variables = List.ofArray(environmentVariables()) |> List.map fst
 
-let path: obj = importAll "path"
-let [<Global("__dirname")>] currentDirectory: string = jsNative
-let entryDirectory = path?resolve(currentDirectory, "${entryDir}")
-printfn "Entry dir: %s" entryDirectory
-
 requiredVariables
 |> List.filter (fun variable -> not (List.contains variable variables))
 |> function 
