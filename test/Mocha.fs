@@ -17,9 +17,8 @@ let areEqual expected actual : unit =
 let isTrue cond = areEqual true cond 
 let isFalse cond = areEqual false cond 
 let isZero number = areEqual 0 number 
-let failTest msg = 
-    Fable.Core.JS.console.error(msg)
-    Assert.AreEqual(true, false, msg)
+let failTest msg = Assert.AreEqual(true, false, msg)
+    
 let testCase name body = SyncTest(name, body)
 let testCaseAsync name body = AsyncTest(name, body)
 let testList name tests = TestModule(name, tests)
@@ -40,7 +39,5 @@ let runModules modules =
                         async {
                             match! Async.Catch(test()) with 
                             | Choice1Of2 () -> do finished()
-                            | Choice2Of2 err -> 
-                                Fable.Core.JS.console.error(err)
-                                finished()
+                            | Choice2Of2 err -> do finished(unbox err)
                         } |> Async.StartImmediate)) 
