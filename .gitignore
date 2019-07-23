@@ -23,7 +23,7 @@ build
 x64/
 [Bb]in/
 [Oo]bj/
-
+.ionide
 # MSTest test Results
 [Tt]est[Rr]esult*/
 [Bb]uild[Ll]og.*
@@ -198,3 +198,4 @@ bundle.js
 bundle.js.map
 dist/*
 !dist/index.html
+.fable
