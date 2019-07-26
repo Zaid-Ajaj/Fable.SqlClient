@@ -15,7 +15,7 @@
     <PropertyGroup>
         <NpmDependencies>
             <NpmPackage Name="mssql" Version=">= 5.1.0" />
-            <NpmPackage Name="does-not-really-exist" Version=">= 6.2.0" />
+            <NpmPackage Name="tedious" Version=">= 6.2.0" />
         </NpmDependencies>
     </PropertyGroup>
     <ItemGroup>
