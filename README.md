@@ -214,7 +214,7 @@ type SqlError =
     | GenericError of errorType: string * message: string * stack: string
 ```
 the type `ISqlProps` is just a helper type that accumulate the configuration for a query using a fluent syntax
-# Developement and Testing
+# Development and Testing
 The test project is in the `test` directory and includes *integration* tests. To run these tests on your local machine, you will need to setup a couple of environment variables:
  - `SQLCLIENT_DATABASE`: the name of the database to run the tests against. The tests don't require a specific database, you can just use `master`. 
  - `SQLCLIENT_SERVER`: the IP address of the hosting machine, if you have a local MSSQL server, then `local/{instance}` will do
